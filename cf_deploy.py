@@ -20,7 +20,7 @@ HOME = str(Path.home())
 RANDOM = str(randint(0, 9999))
 
 def main():
-    'Update or create stack'
+    """Update or create cloudformation stack"""
     args = _arguments()
     print(args)
 
@@ -134,10 +134,8 @@ def _cloudformation(args):
     ]
 
     params = {
-        'StackName': stack_name,
-        'TemplateBody': template_data,
-        'Parameters': parameter_data,
-        'Capabilities': ['CAPABILITY_IAM']
+        'StackName': stack_name, 'TemplateBody': template_data,
+        'Parameters': parameter_data, 'Capabilities': ['CAPABILITY_IAM']
     }
 
     try:
@@ -169,8 +167,7 @@ def _parse_template(template, cf):
 
 
 def _stack_exists(stack_name, cf):
-    stacks = cf.list_stacks()['StackSummaries']
-    for stack in stacks:
+    for stack in cf.list_stacks()['StackSummaries']:
         if stack['StackStatus'] == 'DELETE_COMPLETE':
             continue
         if stack_name == stack['StackName']:
@@ -181,8 +178,7 @@ def _stack_exists(stack_name, cf):
 def json_serial(obj):
     """JSON serializer for objects not serializable by default json code"""
     if isinstance(obj, datetime):
-        serial = obj.isoformat()
-        return serial
+        return obj.isoformat()
     raise TypeError("Type not serializable")
 
 
@@ -243,4 +239,5 @@ def _gitlab_shell(gitlab, output):
     _command(gitlab, fr'sudo EXTERNAL_URL="https://{gitlab_ip}" yum install -y gitlab-ee')
 
 if __name__ == "__main__":
-    main()
+    print(_arguments())
+    # main()

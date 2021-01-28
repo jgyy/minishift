@@ -39,13 +39,13 @@ Parameters:
 Resources:
   GitlabNode:
     Type: AWS::EC2::Instance
-    Description: CentOS Linux 7 x86_64 HVM EBS ENA 2002_01
+    Description: Amazon Linux 2 AMI 2.0.20200304.0 x86_64 HVM gp2
     Properties:
       InstanceType: 't3.medium'
       SecurityGroups:
       - Ref: CentosSG
       KeyName: !Ref 'KeyName'
-      ImageId: 'ami-07f65177cb990d65b'
+      ImageId: 'ami-0cbc6aae997c6538a'
       UserData:
         Fn::Base64:
           !Sub |
@@ -82,12 +82,12 @@ Resources:
         CidrIp: '0.0.0.0/0'
   ControlNode:
     Type: AWS::EC2::Instance
+    Description: Amazon Linux 2 AMI 2.0.20200304.0 x86_64 HVM gp2
     Properties:
       InstanceType: 't3.nano'
       SecurityGroups:
       - Ref: ControlNodeSG
       KeyName: !Ref 'KeyName'
-      # Amazon Linux 2 AMI 2.0.20200304.0 x86_64 HVM gp2
       ImageId: 'ami-0cbc6aae997c6538a'
       UserData:
         Fn::Base64:
@@ -106,7 +106,6 @@ Resources:
         FromPort: '22'
         ToPort: '22'
         CidrIp: '0.0.0.0/0'
-
   LambdaExecutionRole:
     Type: "AWS::IAM::Role"
     Properties:
@@ -188,8 +187,7 @@ Resources:
        ScheduleExpression: !GetAtt GenerateCronExpression.cron_exp
        State: "ENABLED"
        Targets:
-          -
-            Arn: !GetAtt DeleteCFNLambda.Arn
+          - Arn: !GetAtt DeleteCFNLambda.Arn
             Id: 'DeleteCFNLambda'
   PermissionForDeleteCFNLambda:
     Type: "AWS::Lambda::Permission"
@@ -239,14 +237,12 @@ Resources:
       Runtime: "python3.6"
       Timeout: "5"
       Role: !GetAtt LambdaExecutionRole.Arn
-
   GenerateCronExpression:
     Type: "Custom::GenerateCronExpression"
     Version: "1.0"
     Properties:
       ServiceToken: !GetAtt GenerateCronExpLambda.Arn
       ttl: !Ref 'TTL'
-
 Outputs:
   ControlNodeIP:
     Value: !GetAtt ControlNode.PublicIp
@@ -254,6 +250,6 @@ Outputs:
   MinishiftIP:
     Value: !GetAtt MinishiftNode.PublicIp
     Description: 'This is the public IP address of the minishift node.'
-  # GitlabIP:
-  #   Value: !GetAtt GitlabNode.PublicIp
-  #   Description: 'This is the public IP address of the gitlab node.'
+  GitlabIP:
+    Value: !GetAtt GitlabNode.PublicIp
+    Description: 'This is the public IP address of the gitlab node.'
