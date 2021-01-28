@@ -1,11 +1,9 @@
-# https://www.densify.com/articles/deploy-minishift-public-cloud
-# https://about.gitlab.com/install/
----
 AWSTemplateFormatVersion: '2010-09-09'
 Description: >-
   This CloudFormation template will spin up two EC2 instances for setting up minishift.
   It alsos schedule automatic deletion of CloudFormation stacks.
-
+  https://www.densify.com/articles/deploy-minishift-public-cloud
+  https://about.gitlab.com/install/
 Metadata:
   Version: 1.0
   AWS::CloudFormation::Interface:
@@ -23,10 +21,9 @@ Metadata:
         default: Time-to-live
       KeyName:
         default: Instance key name
-
 Parameters:
   KeyName:
-    Description: Select an existing EC2 Key Pair.  If none exists, then create one manually through the console.
+    Description: Select an existing EC2 Key Pair. If none exists, then create one manually through the console.
     Type: AWS::EC2::KeyPair::KeyName
   StackName:
     Type: String
@@ -39,33 +36,32 @@ Parameters:
     Default: 4
     MinValue: 4
     MaxValue: 300
-
 Resources:
-  # GitlabNode:
-  #   Type: AWS::EC2::Instance
-  #   Properties:
-  #     InstanceType: 't3.medium'
-  #     SecurityGroups:
-  #     - Ref: CentosSG
-  #     KeyName: !Ref 'KeyName'
-  #     # CentOS Linux 7 x86_64 HVM EBS ENA 2002_01
-  #     ImageId: 'ami-07f65177cb990d65b'
-  #     UserData:
-  #       Fn::Base64:
-  #         !Sub |
-  #           #!/bin/bash
-  #           yum update -y
-  #     Tags:
-  #     - Key: Name
-  #       Value: Minishift
+  GitlabNode:
+    Type: AWS::EC2::Instance
+    Description: CentOS Linux 7 x86_64 HVM EBS ENA 2002_01
+    Properties:
+      InstanceType: 't3.medium'
+      SecurityGroups:
+      - Ref: CentosSG
+      KeyName: !Ref 'KeyName'
+      ImageId: 'ami-07f65177cb990d65b'
+      UserData:
+        Fn::Base64:
+          !Sub |
+            #!/bin/bash
+            yum update -y
+      Tags:
+      - Key: Name
+        Value: Minishift
   MinishiftNode:
     Type: AWS::EC2::Instance
+    Description: CentOS Linux 7 x86_64 HVM EBS ENA 2002_01
     Properties:
       InstanceType: 't3.large'
       SecurityGroups:
       - Ref: CentosSG
       KeyName: !Ref 'KeyName'
-      # CentOS Linux 7 x86_64 HVM EBS ENA 2002_01
       ImageId: 'ami-07f65177cb990d65b'
       UserData:
         Fn::Base64:
