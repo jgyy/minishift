@@ -83,7 +83,7 @@ Resources:
   GitlabNode:
     Type: AWS::EC2::Instance
     Description: Amazon Linux 2 AMI 2.0.20200304.0 x86_64 HVM gp2
-    Conditions: GitlabResources
+    Condition: GitlabResources
     Properties:
       InstanceType: 't3.medium'
       SecurityGroups:
@@ -101,7 +101,7 @@ Resources:
   PrometheusNode:
     Type: AWS::EC2::Instance
     Description: Amazon Linux 2 AMI 2.0.20200304.0 x86_64 HVM gp2
-    Conditions: PrometheusResources
+    Condition: PrometheusResources
     Properties:
       InstanceType: 't3.medium'
       SecurityGroups:
@@ -119,7 +119,7 @@ Resources:
   MinishiftNode:
     Type: AWS::EC2::Instance
     Description: CentOS Linux 7 x86_64 HVM EBS ENA 2002_01
-    Conditions: MinishiftResources
+    Condition: MinishiftResources
     Properties:
       InstanceType: 't3.large'
       SecurityGroups:
@@ -146,7 +146,7 @@ Resources:
   ControlNode:
     Type: AWS::EC2::Instance
     Description: Amazon Linux 2 AMI 2.0.20200304.0 x86_64 HVM gp2
-    Conditions: MinishiftResources
+    Condition: MinishiftResources
     Properties:
       InstanceType: 't3.nano'
       SecurityGroups:
@@ -163,7 +163,7 @@ Resources:
         Value: Control_Node
   ControlNodeSG:
     Type: AWS::EC2::SecurityGroup
-    Conditions: MinishiftResources
+    Condition: MinishiftResources
     Properties:
       GroupDescription: Enable SSH access via port 22
       SecurityGroupIngress:
@@ -314,16 +314,16 @@ Outputs:
   ControlNodeIP:
     Value: !GetAtt ControlNode.PublicIp
     Description: 'This is the public IP address of the control node.'
-    Conditions: MinishiftResources
+    Condition: MinishiftResources
   MinishiftIP:
     Value: !GetAtt MinishiftNode.PublicIp
     Description: 'This is the public IP address of the minishift node.'
-    Conditions: MinishiftResources
+    Condition: MinishiftResources
   GitlabIP:
     Value: !GetAtt GitlabNode.PublicIp
     Description: 'This is the public IP address of the gitlab node.'
-    Conditions: GitlabResources
+    Condition: GitlabResources
   PrometheusIP:
     Value: !GetAtt PrometheusNode.PublicIp
     Description: 'This is the public IP address of the gitlab node.'
-    Conditions: PrometheusResources
+    Condition: PrometheusResources

@@ -30,11 +30,21 @@ def main():
     output = {out['OutputKey']: out['OutputValue'] for out in outputs}
     print(output)
 
-    # Calling gitlab function to run scripts
-    _gitlab_shell(output['GitlabIP'], args['key'])
-
-    # Calling minishift function to run scripts
-    _minishift_shell(output['ControlNodeIP'], output['MinishiftIP'], args['key'])
+    functions = [
+        {
+            "name": "gitlab",
+            "function": _gitlab_shell,
+            "arguments": (output['GitlabIP'], args['key'])
+        },
+        {
+            "name": "minishift",
+            "function": _minishift_shell,
+            "arguments": (output['ControlNodeIP'], output['MinishiftIP'], args['key'])
+        },
+    ]
+    for func in functions:
+        if func['name'] in args['deploy']:
+            func['function'](*func["arguments"])
 
 def _arguments():
     parse = argparse.ArgumentParser(description=DESCRIPTION.strip("/n"))
