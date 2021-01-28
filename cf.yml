@@ -1,9 +1,12 @@
+---
 AWSTemplateFormatVersion: '2010-09-09'
+
 Description: >-
   This CloudFormation template will spin up two EC2 instances for setting up minishift.
   It alsos schedule automatic deletion of CloudFormation stacks.
   https://www.densify.com/articles/deploy-minishift-public-cloud
   https://about.gitlab.com/install/
+
 Metadata:
   Version: 1.0
   AWS::CloudFormation::Interface:
@@ -14,13 +17,26 @@ Metadata:
           - StackName
           - TTL
           - KeyName
+      - Label:
+          default: Deployment configuration
+        Parameters:
+          - Gitlab
+          - Minishift
+          - Prometheus
     ParameterLabels:
       StackName:
         default: Stack name
       TTL:
-        default: Time-to-live
+        default: Time to live
       KeyName:
-        default: Instance key name
+        default: Instance pem key name
+      Gitlab:
+        default: Gitlab Instances
+      Prometheus:
+        default: Prometheus Instances
+      Minishift:
+        default: Minishift Instances
+
 Parameters:
   KeyName:
     Description: Select an existing EC2 Key Pair. If none exists, then create one manually through the console.
@@ -36,14 +52,60 @@ Parameters:
     Default: 4
     MinValue: 4
     MaxValue: 300
+  Gitlab:
+    Type: String
+    Description: Spin up gitlab instances for lab purpose
+    Default: false
+    AllowedValues: [true, false]
+  Minishift:
+    Type: String
+    Description: Spin up minishift instances for lab purpose
+    Default: false
+    AllowedValues: [true, false]
+  Prometheus:
+    Type: String
+    Description: Spin up prometheus instances for lab purpose
+    Default: false
+    AllowedValues: [true, false]
+
+Conditions:
+  GitlabResources: !Equals
+    - !Ref Gitlab
+    - true
+  MinishiftResources: !Equals
+    - !Ref Minishift
+    - true
+  PrometheusResources: !Equals
+    - !Ref Prometheus
+    - true
+
 Resources:
   GitlabNode:
     Type: AWS::EC2::Instance
     Description: Amazon Linux 2 AMI 2.0.20200304.0 x86_64 HVM gp2
+    Conditions: GitlabResources
     Properties:
       InstanceType: 't3.medium'
       SecurityGroups:
-      - Ref: CentosSG
+      - Ref: InstancesSG
+      KeyName: !Ref 'KeyName'
+      ImageId: 'ami-0cbc6aae997c6538a'
+      UserData:
+        Fn::Base64:
+          !Sub |
+            #!/bin/bash
+            yum update -y
+      Tags:
+      - Key: Name
+        Value: Minishift
+  PrometheusNode:
+    Type: AWS::EC2::Instance
+    Description: Amazon Linux 2 AMI 2.0.20200304.0 x86_64 HVM gp2
+    Conditions: PrometheusResources
+    Properties:
+      InstanceType: 't3.medium'
+      SecurityGroups:
+      - Ref: InstancesSG
       KeyName: !Ref 'KeyName'
       ImageId: 'ami-0cbc6aae997c6538a'
       UserData:
@@ -57,10 +119,11 @@ Resources:
   MinishiftNode:
     Type: AWS::EC2::Instance
     Description: CentOS Linux 7 x86_64 HVM EBS ENA 2002_01
+    Conditions: MinishiftResources
     Properties:
       InstanceType: 't3.large'
       SecurityGroups:
-      - Ref: CentosSG
+      - Ref: InstancesSG
       KeyName: !Ref 'KeyName'
       ImageId: 'ami-07f65177cb990d65b'
       UserData:
@@ -71,7 +134,7 @@ Resources:
       Tags:
       - Key: Name
         Value: Minishift
-  CentosSG:
+  InstancesSG:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: Enable any inbound traffic
@@ -83,6 +146,7 @@ Resources:
   ControlNode:
     Type: AWS::EC2::Instance
     Description: Amazon Linux 2 AMI 2.0.20200304.0 x86_64 HVM gp2
+    Conditions: MinishiftResources
     Properties:
       InstanceType: 't3.nano'
       SecurityGroups:
@@ -99,6 +163,7 @@ Resources:
         Value: Control_Node
   ControlNodeSG:
     Type: AWS::EC2::SecurityGroup
+    Conditions: MinishiftResources
     Properties:
       GroupDescription: Enable SSH access via port 22
       SecurityGroupIngress:
@@ -106,6 +171,7 @@ Resources:
         FromPort: '22'
         ToPort: '22'
         CidrIp: '0.0.0.0/0'
+
   LambdaExecutionRole:
     Type: "AWS::IAM::Role"
     Properties:
@@ -243,13 +309,21 @@ Resources:
     Properties:
       ServiceToken: !GetAtt GenerateCronExpLambda.Arn
       ttl: !Ref 'TTL'
+
 Outputs:
   ControlNodeIP:
     Value: !GetAtt ControlNode.PublicIp
     Description: 'This is the public IP address of the control node.'
+    Conditions: MinishiftResources
   MinishiftIP:
     Value: !GetAtt MinishiftNode.PublicIp
     Description: 'This is the public IP address of the minishift node.'
+    Conditions: MinishiftResources
   GitlabIP:
     Value: !GetAtt GitlabNode.PublicIp
     Description: 'This is the public IP address of the gitlab node.'
+    Conditions: GitlabResources
+  PrometheusIP:
+    Value: !GetAtt PrometheusNode.PublicIp
+    Description: 'This is the public IP address of the gitlab node.'
+    Conditions: PrometheusResources

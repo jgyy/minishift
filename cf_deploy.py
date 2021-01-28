@@ -4,7 +4,6 @@ This script helps to spin up an Openshift lab and gitlab eventually.
  The CloudFormation template will spin up two EC2 instances for setting up minishift.
  It also schedule automatic deletion of CloudFormation stacks.
 """
-
 import argparse
 import boto3
 import botocore
@@ -27,55 +26,15 @@ def main():
     stack = _cloudformation(args)
     print(json.dumps(stack, indent=2, default=json_serial))
     outputs = stack['Stacks'][0]['Outputs']
-    # {'ControlNodeIP': '', 'MinishiftIP': '', 'GitlabIP': ''}
+    # {'ControlNodeIP': '', 'MinishiftIP': '', 'GitlabIP': '', 'PrometheusIP': ''}
     output = {out['OutputKey']: out['OutputValue'] for out in outputs}
     print(output)
 
-    # Connect to control, minishift and gitlab node
-    control_cli = _connect(output['ControlNodeIP'], 'ec2-user', args['key'])
-    minishift = _connect(output['MinishiftIP'], 'centos', args['key'])
-    # _connect(output['GitlabIP'], 'centos', args['key'])
-
     # Calling gitlab function to run scripts
-    # _gitlab_shell(gitlab, output['GitlabIP'])
+    _gitlab_shell(output['GitlabIP'], args['key'])
 
-    # Minishift Setup
-    id_gen = f"id_rsa_{RANDOM}"
-    _command(control_cli, fr'ssh-keygen -b 2048 -t rsa -f /home/ec2-user/.ssh/{id_gen} -q -N ""')
-    id_rsa = _command(control_cli, fr'cat /home/ec2-user/.ssh/{id_gen}.pub')[0]
-    _command(
-        minishift,
-        r"echo -e 'PubkeyAuthentication yes \nPermitRootLogin yes' | sudo tee -a /etc/ssh/sshd_config"
-    )
-    _command(minishift, r'sudo systemctl restart sshd')
-    _command(
-        minishift,
-        fr"echo -e '{id_rsa}' | sudo tee -a /root/.ssh/authorized_keys"
-    )
-    minishift.close()
-
-    # Control Node Setup
-    _command(
-        control_cli,
-        r'wget https://github.com/minishift/minishift/releases/download/v1.34.3/minishift-1.34.3-linux-amd64.tgz'
-    )
-    _command(control_cli, r'tar zxvf minishift-1.34.3-linux-amd64.tgz')
-    _command(control_cli, r'mv minishift-1.34.3-linux-amd64 minishift')
-    _command(control_cli, r'rm minishift-1.34.3-linux-amd64.tgz')
-    _command(control_cli, r'sudo cp /home/ec2-user/minishift/minishift /usr/bin/minishift')
-    _command(control_cli, r'minishift config set vm-driver generic')
-    _command(control_cli, r'minishift config view')
-    _command(
-        control_cli,
-        fr'minishift start --remote-ipaddress {output["MinishiftIP"]} --remote-ssh-user root --remote-ssh-key /home/ec2-user/.ssh/{id_gen}'
-    )
-    _command(control_cli, r'minishift status')
-    _command(control_cli, r'sudo cp /home/ec2-user/.minishift/cache/oc/v3.11.0/linux/oc /usr/bin/oc')
-    _command(control_cli, r'oc status')
-
-    # Close the control node client
-    control_cli.close()
-
+    # Calling minishift function to run scripts
+    _minishift_shell(output['ControlNodeIP'], output['MinishiftIP'], args['key'])
 
 def _arguments():
     parse = argparse.ArgumentParser(description=DESCRIPTION.strip("/n"))
@@ -91,11 +50,16 @@ def _arguments():
         dest='key', required=True,
         help='file path for the PEM key'
     )
-    name = f"default-{RANDOM}"
+    parse.add_argument(
+        '-d', '--deploy-list', nargs='+',
+        action='store', type=str,
+        dest='deploy', default=['minishift', 'gitlab', 'prometheus'],
+        help='list of tools to deploy'
+    )
     parse.add_argument(
         '-s', '--stack-name',
         action='store', type=str,
-        dest='stack', default=name,
+        dest='stack', default=f"default-{RANDOM}",
         help='name of cloudformation stack'
     )
     parse.add_argument(
@@ -111,7 +75,6 @@ def _arguments():
         help='specify the aws region to spinup the cluster'
     )
     return vars(parse.parse_args())
-
 
 def _cloudformation(args):
     cf = boto3.client('cloudformation', region_name=args['region'])
@@ -132,7 +95,11 @@ def _cloudformation(args):
             'ParameterValue': str(args['ttl'])
         },
     ]
-
+    for arg in args['deploy']:
+        parameter_data.append({
+            'ParameterKey': arg.capitalize(),
+            'ParameterValue': "true"
+        })
     params = {
         'StackName': stack_name, 'TemplateBody': template_data,
         'Parameters': parameter_data, 'Capabilities': ['CAPABILITY_IAM']
@@ -158,13 +125,11 @@ def _cloudformation(args):
     else:
         return cf.describe_stacks(StackName=stack_result['StackId'])
 
-
 def _parse_template(template, cf):
     with open(template) as template_fileobj:
         template_data = template_fileobj.read()
     cf.validate_template(TemplateBody=template_data)
     return template_data
-
 
 def _stack_exists(stack_name, cf):
     for stack in cf.list_stacks()['StackSummaries']:
@@ -174,13 +139,11 @@ def _stack_exists(stack_name, cf):
             return True
     return False
 
-
 def json_serial(obj):
     """JSON serializer for objects not serializable by default json code"""
     if isinstance(obj, datetime):
         return obj.isoformat()
     raise TypeError("Type not serializable")
-
 
 def _connect(domain, user, key):
     """Connect to remote host"""
@@ -214,8 +177,11 @@ def _command(control, command):
     stderr.close()
     return [output, error, exit]
 
-def _gitlab_shell(gitlab, output):
+def _gitlab_shell(gitlab_ip, key):
     # Gitlab Setup
+    gitlab = _connect(gitlab_ip, 'ec2-user', key)
+
+    # Gitlab shell scripts
     yum = _command(gitlab, r'ps aux | grep yum')[0].split()[1]
     _command(gitlab, fr'sudo kill -9 {yum}')
     _command(
@@ -235,9 +201,51 @@ def _gitlab_shell(gitlab, output):
         gitlab,
         r'curl https://packages.gitlab.com/install/repositories/gitlab/gitlab-ee/script.rpm.sh | sudo bash'
     )
-    gitlab_ip = output
     _command(gitlab, fr'sudo EXTERNAL_URL="https://{gitlab_ip}" yum install -y gitlab-ee')
 
+    # Close the gitlab ssh session
+    gitlab.close()
+
+def _minishift_shell(control_node_ip, minishift_ip, key):
+    # SSH into minishift instances
+    control_cli = _connect(control_node_ip, 'ec2-user', key)
+    minishift = _connect(minishift_ip, 'centos', key)
+
+    # Minishift Setup
+    _command(control_cli, fr'ssh-keygen -b 2048 -t rsa -f /home/ec2-user/.ssh/id_rsa_{RANDOM} -q -N ""')
+    id_rsa = _command(control_cli, fr'cat /home/ec2-user/.ssh/id_rsa_{RANDOM}.pub')[0]
+    _command(
+        minishift,
+        r"echo -e 'PubkeyAuthentication yes \nPermitRootLogin yes' | sudo tee -a /etc/ssh/sshd_config"
+    )
+    _command(minishift, r'sudo systemctl restart sshd')
+    _command(
+        minishift,
+        fr"echo -e '{id_rsa}' | sudo tee -a /root/.ssh/authorized_keys"
+    )
+    minishift.close()
+
+    # Control Node Setup
+    _command(
+        control_cli,
+        r'wget https://github.com/minishift/minishift/releases/download/v1.34.3/minishift-1.34.3-linux-amd64.tgz'
+    )
+    _command(control_cli, r'tar zxvf minishift-1.34.3-linux-amd64.tgz')
+    _command(control_cli, r'mv minishift-1.34.3-linux-amd64 minishift')
+    _command(control_cli, r'rm minishift-1.34.3-linux-amd64.tgz')
+    _command(control_cli, r'sudo cp /home/ec2-user/minishift/minishift /usr/bin/minishift')
+    _command(control_cli, r'minishift config set vm-driver generic')
+    _command(control_cli, r'minishift config view')
+    _command(
+        control_cli,
+        fr'minishift start --remote-ipaddress {minishift_ip} --remote-ssh-user root --remote-ssh-key /home/ec2-user/.ssh/id_rsa_{RANDOM}'
+    )
+    _command(control_cli, r'minishift status')
+    _command(control_cli, r'sudo cp /home/ec2-user/.minishift/cache/oc/v3.11.0/linux/oc /usr/bin/oc')
+    _command(control_cli, r'oc status')
+
+    # Close the control node client
+    control_cli.close()
+
 if __name__ == "__main__":
-    print(_arguments())
-    # main()
+    main()
