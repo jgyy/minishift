@@ -195,6 +195,13 @@ def _command(control, command):
     error = stderr.read().decode("utf8")
     exit = stdout.channel.recv_exit_status()
 
+    # Because they are file objects, they need to be closed
+    stdin.close()
+    stdout.close()
+    stderr.close()
+    if int(exit) != 0 and 'sudo' not in command:
+        return _command(control, fr"sudo {command}")
+
     # Print output of command. Will wait for command to finish.
     print(f'STDOUT: {output}')
     print(f'STDERR: {error}')
@@ -203,10 +210,6 @@ def _command(control, command):
     time_spent = time() - before
     print(f"Time spent between commands: {time_spent:.2f} seconds\n\n")
 
-    # Because they are file objects, they need to be closed
-    stdin.close()
-    stdout.close()
-    stderr.close()
     return [output, error, exit]
 
 def _minishift_shell(control_node_ip, minishift_ip, key):
@@ -253,7 +256,6 @@ def _minishift_shell(control_node_ip, minishift_ip, key):
 def _gitlab_shell(gitlab_ip, key):
     # Gitlab Setup
     gitlab = _connect(gitlab_ip, 'ec2-user', key)
-    _command(gitlab, r'sudo su')
 
     # Gitlab shell scripts
     yum = _command(gitlab, r'ps aux | grep yum')[0].split()[1]
@@ -283,16 +285,16 @@ def _gitlab_shell(gitlab_ip, key):
 def _prometheus_shell(prometheus_ip, key):
     # Prometheus Setup
     prometheus = _connect(prometheus_ip, 'ec2-user', key)
-    _command(prometheus, r'sudo su')
 
     # prometheus shell scripts
     v = "2.24.1"
+    prometheus_dir = fr"/home/ec2-user/prometheus-{v}.linux-amd64"
     _command(
         prometheus,
         fr'wget https://github.com/prometheus/prometheus/releases/download/v{v}/prometheus-{v}.linux-amd64.tar.gz'
     )
     _command(prometheus, fr'tar -xzvf prometheus-{v}.linux-amd64.tar.gz')
-    _command(prometheus, fr'cd prometheus-{v}.linux-amd64/')
+    _command(prometheus, fr'cd {prometheus_dir}/')
 
     # create user
     _command(prometheus, r'useradd --no-create-home --shell /bin/false prometheus')
@@ -303,14 +305,14 @@ def _prometheus_shell(prometheus_ip, key):
     _command(prometheus, r'chown prometheus:prometheus /etc/prometheus')
     _command(prometheus, r'chown prometheus:prometheus /var/lib/prometheus')
     # copy binaries
-    _command(prometheus, r'cp prometheus /usr/local/bin/')
-    _command(prometheus, r'cp promtool /usr/local/bin/')
+    _command(prometheus, fr'cp {prometheus_dir}/prometheus /usr/local/bin/')
+    _command(prometheus, fr'cp {prometheus_dir}/promtool /usr/local/bin/')
     _command(prometheus, r'chown prometheus:prometheus /usr/local/bin/prometheus')
     _command(prometheus, r'chown prometheus:prometheus /usr/local/bin/promtool')
     # copy config
-    _command(prometheus, r'cp -r consoles /etc/prometheus')
-    _command(prometheus, r'cp -r console_libraries /etc/prometheus')
-    _command(prometheus, r'cp prometheus.yml /etc/prometheus/prometheus.yml')
+    _command(prometheus, fr'cp -r {prometheus_dir}/consoles /etc/prometheus')
+    _command(prometheus, fr'cp -r {prometheus_dir}/console_libraries /etc/prometheus')
+    _command(prometheus, fr'cp {prometheus_dir}/prometheus.yml /etc/prometheus/prometheus.yml')
     _command(prometheus, r'chown -R prometheus:prometheus /etc/prometheus/consoles')
     _command(prometheus, r'chown -R prometheus:prometheus /etc/prometheus/console_libraries')
 
