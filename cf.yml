@@ -197,9 +197,7 @@ Resources:
           - Effect: "Allow"
             Action:
             - cloudformation:DeleteStack
-            - ec2:DeleteSecurityGroup
-            - ec2:DescribeInstances
-            - ec2:TerminateInstances
+            - ec2:*
             - events:DeleteRule
             - events:RemoveTargets
             - iam:DeleteRole
@@ -281,7 +279,7 @@ Resources:
               month = delete_at_time.month
               dd = delete_at_time.day
               # minutes hours day month day-of-week year
-              cron_exp = r"cron({}/1 {} {} {} ? {})".format(mm, hh, dd, month, yyyy)
+              cron_exp = r"cron({} {} {} {} ? {})".format(mm, hh, dd, month, yyyy)
               return cron_exp
 
           def handler(event, context):

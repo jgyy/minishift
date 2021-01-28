@@ -1,9 +1,4 @@
 # https://www.densify.com/articles/deploy-minishift-public-cloud
-DESCRIPTION = """
-This script helps to spin up an Openshift lab and gitlab eventually.
- The CloudFormation template will spin up two EC2 instances for setting up minishift.
- It also schedule automatic deletion of CloudFormation stacks.
-"""
 import argparse
 import boto3
 import botocore
@@ -15,8 +10,31 @@ from paramiko import SSHClient, AutoAddPolicy
 from pathlib import Path
 from random import randint
 from time import time
+
 HOME = str(Path.home())
 RANDOM = str(randint(0, 9999))
+DESCRIPTION = """
+This script helps to spin up an Openshift lab and gitlab eventually.
+The CloudFormation template will spin up two EC2 instances for setting up minishift.
+It also schedule automatic deletion of CloudFormation stacks.
+""".strip()
+PROMETHEUS = """
+[Unit]
+Description=Prometheus
+Wants=network-online.target
+After=network-online.target
+[Service]
+User=prometheus
+Group=prometheus
+Type=simple
+ExecStart=/usr/local/bin/prometheus \
+    --config.file /etc/prometheus/prometheus.yml \
+    --storage.tsdb.path /var/lib/prometheus/ \
+    --web.console.templates=/etc/prometheus/consoles \
+    --web.console.libraries=/etc/prometheus/console_libraries
+[Install]
+WantedBy=multi-user.target'
+""".strip()
 
 def main():
     """Update or create cloudformation stack"""
@@ -30,21 +48,20 @@ def main():
     output = {out['OutputKey']: out['OutputValue'] for out in outputs}
     print(output)
 
-    functions = [
-        {
-            "name": "gitlab",
+    functions = {
+        "gitlab": {
             "function": _gitlab_shell,
-            "arguments": (output['GitlabIP'], args['key'])
+            "arguments": (output.get('GitlabIP'), args['key'])
         },
-        {
-            "name": "minishift",
+        "minishift": {
             "function": _minishift_shell,
-            "arguments": (output['ControlNodeIP'], output['MinishiftIP'], args['key'])
+            "arguments": (output.get('ControlNodeIP'), output.get('MinishiftIP'), args['key'])
         },
-    ]
-    for func in functions:
-        if func['name'] in args['deploy']:
-            func['function'](*func["arguments"])
+    }
+    for arg in args['deploy']:
+        function = functions[arg]['function']
+        argument = functions[arg]['arguments']
+        function(*argument)
 
 def _arguments():
     parse = argparse.ArgumentParser(description=DESCRIPTION.strip("/n"))
@@ -187,35 +204,6 @@ def _command(control, command):
     stderr.close()
     return [output, error, exit]
 
-def _gitlab_shell(gitlab_ip, key):
-    # Gitlab Setup
-    gitlab = _connect(gitlab_ip, 'ec2-user', key)
-
-    # Gitlab shell scripts
-    yum = _command(gitlab, r'ps aux | grep yum')[0].split()[1]
-    _command(gitlab, fr'sudo kill -9 {yum}')
-    _command(
-        gitlab,
-        r'sudo yum install -y curl policycoreutils-python openssh-server perl firewalld postfix'
-    )
-    _command(gitlab, r'sudo systemctl enable sshd')
-    _command(gitlab, r'sudo systemctl start sshd')
-    _command(gitlab, r'sudo systemctl enable firewalld')
-    _command(gitlab, r'sudo systemctl start firewalld')
-    _command(gitlab, r'sudo firewall-cmd --permanent --add-service=http')
-    _command(gitlab, r'sudo firewall-cmd --permanent --add-service=https')
-    _command(gitlab, r'sudo systemctl reload firewalld')
-    _command(gitlab, r'sudo systemctl enable postfix')
-    _command(gitlab, r'sudo systemctl start postfix')
-    _command(
-        gitlab,
-        r'curl https://packages.gitlab.com/install/repositories/gitlab/gitlab-ee/script.rpm.sh | sudo bash'
-    )
-    _command(gitlab, fr'sudo EXTERNAL_URL="https://{gitlab_ip}" yum install -y gitlab-ee')
-
-    # Close the gitlab ssh session
-    gitlab.close()
-
 def _minishift_shell(control_node_ip, minishift_ip, key):
     # SSH into minishift instances
     control_cli = _connect(control_node_ip, 'ec2-user', key)
@@ -256,6 +244,77 @@ def _minishift_shell(control_node_ip, minishift_ip, key):
 
     # Close the control node client
     control_cli.close()
+
+def _gitlab_shell(gitlab_ip, key):
+    # Gitlab Setup
+    gitlab = _connect(gitlab_ip, 'ec2-user', key)
+
+    # Gitlab shell scripts
+    yum = _command(gitlab, r'ps aux | grep yum')[0].split()[1]
+    _command(gitlab, fr'sudo kill -9 {yum}')
+    _command(
+        gitlab,
+        r'sudo yum install -y curl policycoreutils-python openssh-server perl firewalld postfix'
+    )
+    _command(gitlab, r'sudo systemctl enable sshd')
+    _command(gitlab, r'sudo systemctl start sshd')
+    _command(gitlab, r'sudo systemctl enable firewalld')
+    _command(gitlab, r'sudo systemctl start firewalld')
+    _command(gitlab, r'sudo firewall-cmd --permanent --add-service=http')
+    _command(gitlab, r'sudo firewall-cmd --permanent --add-service=https')
+    _command(gitlab, r'sudo systemctl reload firewalld')
+    _command(gitlab, r'sudo systemctl enable postfix')
+    _command(gitlab, r'sudo systemctl start postfix')
+    _command(
+        gitlab,
+        r'curl https://packages.gitlab.com/install/repositories/gitlab/gitlab-ee/script.rpm.sh | sudo bash'
+    )
+    _command(gitlab, fr'sudo EXTERNAL_URL="https://{gitlab_ip}" yum install -y gitlab-ee')
+
+    # Close the gitlab ssh session
+    gitlab.close()
+
+def _prometheus_shell(prometheus_ip, key):
+    # Prometheus Setup
+    prometheus = _connect(prometheus_ip, 'ec2-user', key)
+
+    # prometheus shell scripts
+    v = "2.24.1"
+    _command(
+        prometheus,
+        fr'wget https://github.com/prometheus/prometheus/releases/download/v{v}/prometheus-{v}.linux-amd64.tar.gz'
+    )
+    _command(prometheus, fr'tar -xzvf prometheus-{v}.linux-amd64.tar.gz')
+    _command(prometheus, fr'cd prometheus-{v}.linux-amd64/')
+
+    # create user
+    _command(prometheus, r'useradd --no-create-home --shell /bin/false prometheus')
+    # create directories
+    _command(prometheus, r'mkdir -p /etc/prometheus')
+    _command(prometheus, r'mkdir -p /var/lib/prometheus')
+    # set ownership
+    _command(prometheus, r'chown prometheus:prometheus /etc/prometheus')
+    _command(prometheus, r'chown prometheus:prometheus /var/lib/prometheus')
+    # copy binaries
+    _command(prometheus, r'cp prometheus /usr/local/bin/')
+    _command(prometheus, r'cp promtool /usr/local/bin/')
+    _command(prometheus, r'chown prometheus:prometheus /usr/local/bin/prometheus')
+    _command(prometheus, r'chown prometheus:prometheus /usr/local/bin/promtool')
+    # copy config
+    _command(prometheus, r'cp -r consoles /etc/prometheus')
+    _command(prometheus, r'cp -r console_libraries /etc/prometheus')
+    _command(prometheus, r'cp prometheus.yml /etc/prometheus/prometheus.yml')
+    _command(prometheus, r'chown -R prometheus:prometheus /etc/prometheus/consoles')
+    _command(prometheus, r'chown -R prometheus:prometheus /etc/prometheus/console_libraries')
+
+    # setup systemd
+    _command(prometheus, fr"echo '{PROMETHEUS}' > /etc/systemd/system/prometheus.service")
+    _command(prometheus, r'systemctl daemon-reload')
+    _command(prometheus, r'systemctl enable prometheus')
+    _command(prometheus, r'systemctl start prometheus')
+
+    # Close the prometheus ssh session
+    prometheus.close()
 
 if __name__ == "__main__":
     main()
