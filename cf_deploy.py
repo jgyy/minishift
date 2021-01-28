@@ -57,11 +57,16 @@ def main():
             "function": _minishift_shell,
             "arguments": (output.get('ControlNodeIP'), output.get('MinishiftIP'), args['key'])
         },
+        "prometheus": {
+            "function": _prometheus_shell,
+            "arguments": (output.get('PrometheusIP'), args['key'])
+        }
     }
     for arg in args['deploy']:
-        function = functions[arg]['function']
-        argument = functions[arg]['arguments']
-        function(*argument)
+        if functions.get(arg):
+            function = functions[arg]['function']
+            argument = functions[arg]['arguments']
+            function(*argument)
 
 def _arguments():
     parse = argparse.ArgumentParser(description=DESCRIPTION.strip("/n"))
@@ -248,28 +253,29 @@ def _minishift_shell(control_node_ip, minishift_ip, key):
 def _gitlab_shell(gitlab_ip, key):
     # Gitlab Setup
     gitlab = _connect(gitlab_ip, 'ec2-user', key)
+    _command(gitlab, r'sudo su')
 
     # Gitlab shell scripts
     yum = _command(gitlab, r'ps aux | grep yum')[0].split()[1]
-    _command(gitlab, fr'sudo kill -9 {yum}')
+    _command(gitlab, fr'kill -9 {yum}')
     _command(
         gitlab,
         r'sudo yum install -y curl policycoreutils-python openssh-server perl firewalld postfix'
     )
-    _command(gitlab, r'sudo systemctl enable sshd')
-    _command(gitlab, r'sudo systemctl start sshd')
-    _command(gitlab, r'sudo systemctl enable firewalld')
-    _command(gitlab, r'sudo systemctl start firewalld')
-    _command(gitlab, r'sudo firewall-cmd --permanent --add-service=http')
-    _command(gitlab, r'sudo firewall-cmd --permanent --add-service=https')
-    _command(gitlab, r'sudo systemctl reload firewalld')
-    _command(gitlab, r'sudo systemctl enable postfix')
-    _command(gitlab, r'sudo systemctl start postfix')
+    _command(gitlab, r'systemctl enable sshd')
+    _command(gitlab, r'systemctl start sshd')
+    _command(gitlab, r'systemctl enable firewalld')
+    _command(gitlab, r'systemctl start firewalld')
+    _command(gitlab, r'firewall-cmd --permanent --add-service=http')
+    _command(gitlab, r'firewall-cmd --permanent --add-service=https')
+    _command(gitlab, r'systemctl reload firewalld')
+    _command(gitlab, r'systemctl enable postfix')
+    _command(gitlab, r'systemctl start postfix')
     _command(
         gitlab,
         r'curl https://packages.gitlab.com/install/repositories/gitlab/gitlab-ee/script.rpm.sh | sudo bash'
     )
-    _command(gitlab, fr'sudo EXTERNAL_URL="https://{gitlab_ip}" yum install -y gitlab-ee')
+    _command(gitlab, fr'EXTERNAL_URL="https://{gitlab_ip}" yum install -y gitlab-ee')
 
     # Close the gitlab ssh session
     gitlab.close()
@@ -277,6 +283,7 @@ def _gitlab_shell(gitlab_ip, key):
 def _prometheus_shell(prometheus_ip, key):
     # Prometheus Setup
     prometheus = _connect(prometheus_ip, 'ec2-user', key)
+    _command(prometheus, r'sudo su')
 
     # prometheus shell scripts
     v = "2.24.1"
