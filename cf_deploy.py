@@ -33,7 +33,7 @@ ExecStart=/usr/local/bin/prometheus \
     --web.console.templates=/etc/prometheus/consoles \
     --web.console.libraries=/etc/prometheus/console_libraries
 [Install]
-WantedBy=multi-user.target'
+WantedBy=multi-user.target
 """.strip()
 
 def main():
@@ -252,6 +252,7 @@ def _minishift_shell(control_node_ip, minishift_ip, key):
 
     # Close the control node client
     control_cli.close()
+    print(fr'http://{minishift_ip}:8443/console/')
 
 def _gitlab_shell(gitlab_ip, key):
     # Gitlab Setup
@@ -317,13 +318,14 @@ def _prometheus_shell(prometheus_ip, key):
     _command(prometheus, r'chown -R prometheus:prometheus /etc/prometheus/console_libraries')
 
     # setup systemd
-    _command(prometheus, fr"echo '{PROMETHEUS}' > /etc/systemd/system/prometheus.service")
+    _command(prometheus, fr"echo '{PROMETHEUS}' | sudo tee /etc/systemd/system/prometheus.service")
     _command(prometheus, r'systemctl daemon-reload')
     _command(prometheus, r'systemctl enable prometheus')
     _command(prometheus, r'systemctl start prometheus')
 
     # Close the prometheus ssh session
     prometheus.close()
+    print(fr'http://{prometheus_ip}:9090/')
 
 if __name__ == "__main__":
     main()
