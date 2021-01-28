@@ -1,0 +1,263 @@
+# https://www.densify.com/articles/deploy-minishift-public-cloud
+# https://about.gitlab.com/install/
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  This CloudFormation template will spin up two EC2 instances for setting up minishift.
+  It alsos schedule automatic deletion of CloudFormation stacks.
+
+Metadata:
+  Version: 1.0
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: Input configuration
+        Parameters:
+          - StackName
+          - TTL
+          - KeyName
+    ParameterLabels:
+      StackName:
+        default: Stack name
+      TTL:
+        default: Time-to-live
+      KeyName:
+        default: Instance key name
+
+Parameters:
+  KeyName:
+    Description: Select an existing EC2 Key Pair.  If none exists, then create one manually through the console.
+    Type: AWS::EC2::KeyPair::KeyName
+  StackName:
+    Type: String
+    Description: Stack name that will be deleted.
+    MinLength: 1
+    MaxLength: 128
+  TTL:
+    Type: Number
+    Description: Time-to-live in minutes for the stack.
+    Default: 4
+    MinValue: 4
+    MaxValue: 300
+
+Resources:
+  # GitlabNode:
+  #   Type: AWS::EC2::Instance
+  #   Properties:
+  #     InstanceType: 't3.medium'
+  #     SecurityGroups:
+  #     - Ref: CentosSG
+  #     KeyName: !Ref 'KeyName'
+  #     # CentOS Linux 7 x86_64 HVM EBS ENA 2002_01
+  #     ImageId: 'ami-07f65177cb990d65b'
+  #     UserData:
+  #       Fn::Base64:
+  #         !Sub |
+  #           #!/bin/bash
+  #           yum update -y
+  #     Tags:
+  #     - Key: Name
+  #       Value: Minishift
+  MinishiftNode:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: 't3.large'
+      SecurityGroups:
+      - Ref: CentosSG
+      KeyName: !Ref 'KeyName'
+      # CentOS Linux 7 x86_64 HVM EBS ENA 2002_01
+      ImageId: 'ami-07f65177cb990d65b'
+      UserData:
+        Fn::Base64:
+          !Sub |
+            #!/bin/bash
+            yum update -y
+      Tags:
+      - Key: Name
+        Value: Minishift
+  CentosSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Enable any inbound traffic
+      SecurityGroupIngress:
+      - IpProtocol: -1
+        FromPort: -1
+        ToPort: -1
+        CidrIp: '0.0.0.0/0'
+  ControlNode:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: 't3.nano'
+      SecurityGroups:
+      - Ref: ControlNodeSG
+      KeyName: !Ref 'KeyName'
+      # Amazon Linux 2 AMI 2.0.20200304.0 x86_64 HVM gp2
+      ImageId: 'ami-0cbc6aae997c6538a'
+      UserData:
+        Fn::Base64:
+          !Sub |
+            #!/bin/bash
+            yum update -y
+      Tags:
+      - Key: Name
+        Value: Control_Node
+  ControlNodeSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Enable SSH access via port 22
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: '22'
+        ToPort: '22'
+        CidrIp: '0.0.0.0/0'
+
+  LambdaExecutionRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+        - Effect: "Allow"
+          Principal:
+            Service: ["lambda.amazonaws.com"]
+          Action: "sts:AssumeRole"
+      Path: "/"
+      Policies:
+      - PolicyName: "lambda_policy"
+        PolicyDocument:
+          Version: "2012-10-17"
+          Statement:
+          - Effect: "Allow"
+            Action:
+            - "logs:CreateLogGroup"
+            - "logs:CreateLogStream"
+            - "logs:PutLogEvents"
+            Resource: "arn:aws:logs:*:*:*"
+          - Effect: "Allow"
+            Action:
+            - cloudformation:DeleteStack
+            - ec2:DeleteSecurityGroup
+            - ec2:DescribeInstances
+            - ec2:TerminateInstances
+            - events:DeleteRule
+            - events:RemoveTargets
+            - iam:DeleteRole
+            - iam:DeleteRolePolicy
+            - iam:PassRole
+            - lambda:DeleteFunction
+            - lambda:InvokeFunction
+            - lambda:RemovePermission
+            Resource: "*"
+  DeleteCFNLambda:
+    Type: "AWS::Lambda::Function"
+    DependsOn:
+      - LambdaExecutionRole
+    Properties:
+      FunctionName: !Sub "DeleteCFNLambda-${StackName}"
+      Code:
+        ZipFile: |
+          import boto3
+          import os
+          import json
+
+          stack_name = os.environ['stackName']
+
+          def delete_cfn(stack_name):
+              try:
+                  cfn = boto3.resource('cloudformation')
+                  stack = cfn.Stack(stack_name)
+                  stack.delete()
+                  return "SUCCESS"
+              except:
+                  return "ERROR"
+
+          def handler(event, context):
+              print("Received event:")
+              print(json.dumps(event))
+              return delete_cfn(stack_name)
+      Environment:
+        Variables:
+          stackName: !Ref 'StackName'
+      Handler: "index.handler"
+      Runtime: "python3.6"
+      Timeout: "5"
+      Role: !GetAtt LambdaExecutionRole.Arn
+  DeleteStackEventRule:
+     DependsOn:
+       - DeleteCFNLambda
+       - GenerateCronExpression
+     Type: "AWS::Events::Rule"
+     Properties:
+       Description: Delete stack event
+       ScheduleExpression: !GetAtt GenerateCronExpression.cron_exp
+       State: "ENABLED"
+       Targets:
+          -
+            Arn: !GetAtt DeleteCFNLambda.Arn
+            Id: 'DeleteCFNLambda'
+  PermissionForDeleteCFNLambda:
+    Type: "AWS::Lambda::Permission"
+    Properties:
+      FunctionName: !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:DeleteCFNLambda-${StackName}"
+      Action: "lambda:InvokeFunction"
+      Principal: "events.amazonaws.com"
+      SourceArn: !GetAtt DeleteStackEventRule.Arn
+  GenerateCronExpLambda:
+    Type: "AWS::Lambda::Function"
+    Properties:
+      Code:
+        ZipFile: |
+          from datetime import datetime, timedelta
+          import os
+          import logging
+          import json
+          import cfnresponse
+
+          def deletion_time(ttl):
+              delete_at_time = datetime.now() + timedelta(minutes=int(ttl))
+              hh = delete_at_time.hour
+              mm = delete_at_time.minute
+              yyyy = delete_at_time.year
+              month = delete_at_time.month
+              dd = delete_at_time.day
+              # minutes hours day month day-of-week year
+              cron_exp = r"cron({}/1 {} {} {} ? {})".format(mm, hh, dd, month, yyyy)
+              return cron_exp
+
+          def handler(event, context):
+            print('Received event: %s' % json.dumps(event))
+            status = cfnresponse.SUCCESS
+            try:
+                if event['RequestType'] == 'Delete':
+                    cfnresponse.send(event, context, status, {})
+                else:
+                    ttl = event['ResourceProperties']['ttl']
+                    responseData = {}
+                    responseData['cron_exp'] = deletion_time(ttl)
+                    cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData)
+            except Exception as e:
+                logging.error('Exception: %s' % e, exc_info=True)
+                status = cfnresponse.FAILED
+                cfnresponse.send(event, context, status, {}, None)
+      Handler: "index.handler"
+      Runtime: "python3.6"
+      Timeout: "5"
+      Role: !GetAtt LambdaExecutionRole.Arn
+
+  GenerateCronExpression:
+    Type: "Custom::GenerateCronExpression"
+    Version: "1.0"
+    Properties:
+      ServiceToken: !GetAtt GenerateCronExpLambda.Arn
+      ttl: !Ref 'TTL'
+
+Outputs:
+  ControlNodeIP:
+    Value: !GetAtt ControlNode.PublicIp
+    Description: 'This is the public IP address of the control node.'
+  MinishiftIP:
+    Value: !GetAtt MinishiftNode.PublicIp
+    Description: 'This is the public IP address of the minishift node.'
+  # GitlabIP:
+  #   Value: !GetAtt GitlabNode.PublicIp
+  #   Description: 'This is the public IP address of the gitlab node.'
