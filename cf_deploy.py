@@ -13,6 +13,8 @@ from time import time
 
 HOME = str(Path.home())
 RANDOM = str(randint(0, 9999))
+REGION = 'ap-southeast-1'
+STACK_NAME = ''
 DESCRIPTION = """
 This script helps to spin up an Openshift lab and gitlab eventually.
 The CloudFormation template will spin up two EC2 instances for setting up minishift.
@@ -104,10 +106,12 @@ def _arguments():
     return vars(parse.parse_args())
 
 def _cloudformation(args):
-    cf = boto3.client('cloudformation', region_name=args['region'])
+    global REGION, STACK_NAME
+    REGION = args['region']
+    cf = boto3.client('cloudformation', region_name=REGION)
     logging.getLogger('deploy.cf.create_or_update')
     template_data = _parse_template(args['file'], cf)
-    stack_name = args['stack']
+    STACK_NAME = args['stack']
     parameter_data = [
         {
             'ParameterKey': 'KeyName',
@@ -115,7 +119,7 @@ def _cloudformation(args):
         },
         {
             'ParameterKey': 'StackName',
-            'ParameterValue': stack_name
+            'ParameterValue': STACK_NAME
         },
         {
             'ParameterKey': 'TTL',
@@ -128,21 +132,21 @@ def _cloudformation(args):
             'ParameterValue': "true"
         })
     params = {
-        'StackName': stack_name, 'TemplateBody': template_data,
+        'StackName': STACK_NAME, 'TemplateBody': template_data,
         'Parameters': parameter_data, 'Capabilities': ['CAPABILITY_IAM']
     }
 
     try:
-        if _stack_exists(stack_name, cf):
-            print('Updating {}'.format(stack_name))
+        if _stack_exists(STACK_NAME, cf):
+            print('Updating {}'.format(STACK_NAME))
             stack_result = cf.update_stack(**params)
             waiter = cf.get_waiter('stack_update_complete')
         else:
-            print('Creating {}'.format(stack_name))
+            print('Creating {}'.format(STACK_NAME))
             stack_result = cf.create_stack(**params)
             waiter = cf.get_waiter('stack_create_complete')
         print("...waiting for stack to be ready...")
-        waiter.wait(StackName=stack_name)
+        waiter.wait(StackName=STACK_NAME)
     except botocore.exceptions.ClientError as ex:
         error_message = ex.response['Error']['Message']
         if error_message == 'No updates are to be performed.':
@@ -182,6 +186,7 @@ def _connect(domain, user, key):
     return control
 
 def _command(control, command):
+    global REGION, STACK_NAME
     before = time()
     print(f'STDIN: {command}')
     # Run a command (execute ssh-keygen)
@@ -196,6 +201,12 @@ def _command(control, command):
     stderr.close()
     if int(exit) != 0 and 'sudo' not in command:
         return _command(control, fr"sudo {command}")
+    if int(exit) != 0 and 'sudo' in command:
+        print('Error encountered while provisioning instance, proceed to delete cloudformation stack!')
+        aws_lambda = boto3.client('lambda', region_name=REGION)
+        response = aws_lambda.invoke(FunctionName=f'DeleteCFNLambda-{STACK_NAME}')
+        print(response)
+        exit()
 
     # Print output of command. Will wait for command to finish.
     print(f'STDOUT: {output}')
@@ -254,8 +265,6 @@ def _gitlab_shell(gitlab_ip, key):
     gitlab = _connect(gitlab_ip, 'ec2-user', key)
 
     # Gitlab shell scripts
-    yum = _command(gitlab, r'ps aux | grep yum')[0].split()[1]
-    _command(gitlab, fr'kill -KILL {yum}')
     _command(
         gitlab,
         r'sudo yum install -y curl policycoreutils-python openssh-server perl firewalld postfix'
@@ -285,6 +294,7 @@ def _prometheus_shell(prometheus_ip, key):
     # prometheus shell scripts
     prometheus_version = "2.24.1"
     prometheus_dir = fr"/home/ec2-user/prometheus-{prometheus_version}.linux-amd64"
+    _command(prometheus, 'qwertyuiop')
     _command(
         prometheus,
         fr'wget https://github.com/prometheus/prometheus/releases/download/v{prometheus_version}/prometheus-{prometheus_version}.linux-amd64.tar.gz'
@@ -327,7 +337,7 @@ def _prometheus_shell(prometheus_ip, key):
 
     # setup node exporter
     node_exporter_version = "1.0.1"
-    node_exporter_dir = fr"/home/ec2-user/node_exporter-{prometheus_version}.linux-amd64"
+    node_exporter_dir = fr"/home/ec2-user/node_exporter-{node_exporter_version}.linux-amd64"
     _command(
         prometheus,
         fr"wget https://github.com/prometheus/node_exporter/releases/download/v{node_exporter_version}/node_exporter-{node_exporter_version}.linux-amd64.tar.gz"
