@@ -255,7 +255,7 @@ def _gitlab_shell(gitlab_ip, key):
 
     # Gitlab shell scripts
     yum = _command(gitlab, r'ps aux | grep yum')[0].split()[1]
-    _command(gitlab, fr'kill -9 {yum}')
+    _command(gitlab, fr'kill -KILL {yum}')
     _command(
         gitlab,
         r'sudo yum install -y curl policycoreutils-python openssh-server perl firewalld postfix'
@@ -349,10 +349,7 @@ def _prometheus_shell(prometheus_ip, key):
 
     # restart prometheus server
     prometheus_service = _command(prometheus, r'ps aux | grep prometheus')[0].split()[1]
-    _command(prometheus, fr'kill -9 {prometheus_service}')
-    _command(prometheus, r'systemctl daemon-reload')
-    _command(prometheus, r'systemctl enable prometheus')
-    _command(prometheus, r'systemctl start prometheus')
+    _command(prometheus, fr'kill -HUP {prometheus_service}')
 
     # Close the prometheus ssh session
     prometheus.close()
