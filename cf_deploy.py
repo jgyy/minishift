@@ -35,6 +35,17 @@ ExecStart=/usr/local/bin/prometheus \
 [Install]
 WantedBy=multi-user.target
 """.strip()
+GRAFANA = """
+[grafana]
+name=grafana
+baseurl=https://packages.grafana.com/oss/rpm
+repo_gpgcheck=1
+enabled=1
+gpgcheck=1
+gpgkey=https://packages.grafana.com/gpg.key
+sslverify=1
+sslcacert=/etc/pki/tls/certs/ca-bundle.crt
+""".strip()
 
 def main():
     """Update or create cloudformation stack"""
@@ -323,9 +334,17 @@ def _prometheus_shell(prometheus_ip, key):
     _command(prometheus, r'systemctl enable prometheus')
     _command(prometheus, r'systemctl start prometheus')
 
+    # setup grafana
+    _command(prometheus, fr"echo '{GRAFANA}' | sudo tee /etc/yum.repos.d/grafana.repo")
+    _command(prometheus, fr"yum install grafana")
+    _command(prometheus, fr"systemctl daemon-reload")
+    _command(prometheus, fr"systemctl start grafana-server")
+    _command(prometheus, fr"systemctl enable grafana-server.service")
+
     # Close the prometheus ssh session
     prometheus.close()
-    print(fr'http://{prometheus_ip}:9090/')
+    print(fr'prometheus url: http://{prometheus_ip}:9090/')
+    print(fr'grafana url: http://{prometheus_ip}:3000/')
 
 if __name__ == "__main__":
     main()
