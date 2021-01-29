@@ -336,7 +336,7 @@ def _prometheus_shell(prometheus_ip, key):
 
     # setup grafana
     _command(prometheus, fr"echo '{GRAFANA}' | sudo tee /etc/yum.repos.d/grafana.repo")
-    _command(prometheus, fr"yum install grafana")
+    _command(prometheus, fr"yum install -y grafana")
     _command(prometheus, fr"systemctl daemon-reload")
     _command(prometheus, fr"systemctl start grafana-server")
     _command(prometheus, fr"systemctl enable grafana-server.service")
