@@ -18,34 +18,18 @@ This script helps to spin up an Openshift lab and gitlab eventually.
 The CloudFormation template will spin up two EC2 instances for setting up minishift.
 It also schedule automatic deletion of CloudFormation stacks.
 """.strip()
-PROMETHEUS = """
-[Unit]
-Description=Prometheus
-Wants=network-online.target
-After=network-online.target
-[Service]
-User=prometheus
-Group=prometheus
-Type=simple
-ExecStart=/usr/local/bin/prometheus \
-    --config.file /etc/prometheus/prometheus.yml \
-    --storage.tsdb.path /var/lib/prometheus/ \
-    --web.console.templates=/etc/prometheus/consoles \
-    --web.console.libraries=/etc/prometheus/console_libraries
-[Install]
-WantedBy=multi-user.target
-""".strip()
-GRAFANA = """
-[grafana]
-name=grafana
-baseurl=https://packages.grafana.com/oss/rpm
-repo_gpgcheck=1
-enabled=1
-gpgcheck=1
-gpgkey=https://packages.grafana.com/gpg.key
-sslverify=1
-sslcacert=/etc/pki/tls/certs/ca-bundle.crt
-""".strip()
+with open("prometheus.txt") as file:
+    PROMETHEUS = file.read()
+with open("grafana.txt") as file:
+    GRAFANA = file.read()
+with open("node_Exporter.txt") as file:
+    NODE_EXPORTER = file.read()
+CONFIG = """
+  - job_name: 'node_exporter'
+    scrape_interval: 5s
+    static_configs:
+      - targets: ['localhost:9100']
+"""
 
 def main():
     """Update or create cloudformation stack"""
@@ -299,13 +283,13 @@ def _prometheus_shell(prometheus_ip, key):
     prometheus = _connect(prometheus_ip, 'ec2-user', key)
 
     # prometheus shell scripts
-    v = "2.24.1"
-    prometheus_dir = fr"/home/ec2-user/prometheus-{v}.linux-amd64"
+    prometheus_version = "2.24.1"
+    prometheus_dir = fr"/home/ec2-user/prometheus-{prometheus_version}.linux-amd64"
     _command(
         prometheus,
         fr'wget https://github.com/prometheus/prometheus/releases/download/v{v}/prometheus-{v}.linux-amd64.tar.gz'
     )
-    _command(prometheus, fr'tar -xzvf prometheus-{v}.linux-amd64.tar.gz')
+    _command(prometheus, fr'tar -xzvf prometheus-{prometheus_version}.linux-amd64.tar.gz')
     _command(prometheus, fr'cd {prometheus_dir}/')
 
     # create user
@@ -317,13 +301,13 @@ def _prometheus_shell(prometheus_ip, key):
     _command(prometheus, r'chown prometheus:prometheus /etc/prometheus')
     _command(prometheus, r'chown prometheus:prometheus /var/lib/prometheus')
     # copy binaries
-    _command(prometheus, fr'cp {prometheus_dir}/prometheus /usr/local/bin/')
-    _command(prometheus, fr'cp {prometheus_dir}/promtool /usr/local/bin/')
+    _command(prometheus, fr'cp {prometheus_dir}/prometheus /usr/local/bin/prometheus')
+    _command(prometheus, fr'cp {prometheus_dir}/promtool /usr/local/bin/promtool')
     _command(prometheus, r'chown prometheus:prometheus /usr/local/bin/prometheus')
     _command(prometheus, r'chown prometheus:prometheus /usr/local/bin/promtool')
     # copy config
-    _command(prometheus, fr'cp -r {prometheus_dir}/consoles /etc/prometheus')
-    _command(prometheus, fr'cp -r {prometheus_dir}/console_libraries /etc/prometheus')
+    _command(prometheus, fr'cp -r {prometheus_dir}/consoles /etc/prometheus/consoles')
+    _command(prometheus, fr'cp -r {prometheus_dir}/console_libraries /etc/prometheus/console_libraries')
     _command(prometheus, fr'cp {prometheus_dir}/prometheus.yml /etc/prometheus/prometheus.yml')
     _command(prometheus, r'chown -R prometheus:prometheus /etc/prometheus/consoles')
     _command(prometheus, r'chown -R prometheus:prometheus /etc/prometheus/console_libraries')
@@ -336,10 +320,32 @@ def _prometheus_shell(prometheus_ip, key):
 
     # setup grafana
     _command(prometheus, fr"echo '{GRAFANA}' | sudo tee /etc/yum.repos.d/grafana.repo")
-    _command(prometheus, fr"yum install -y grafana")
-    _command(prometheus, fr"systemctl daemon-reload")
-    _command(prometheus, fr"systemctl start grafana-server")
-    _command(prometheus, fr"systemctl enable grafana-server.service")
+    _command(prometheus, r"yum install -y grafana")
+    _command(prometheus, r"systemctl daemon-reload")
+    _command(prometheus, r"systemctl start grafana-server")
+    _command(prometheus, r"systemctl enable grafana-server.service")
+
+    # setup node exporter
+    node_exporter_version = "1.0.1"
+    node_exporter_dir = fr"/home/ec2-user/node_exporter-{prometheus_version}.linux-amd64"
+    _command(
+        prometheus,
+        fr"wget https://github.com/prometheus/node_exporter/releases/download/v${node_exporter_version}/node_exporter-${node_exporter_version}.linux-amd64.tar.gz"
+    )
+    _command(prometheus, fr"tar -xzvf node_exporter-${node_exporter_version}.linux-amd64.tar.gz")
+    _command(prometheus, fr"cd {node_exporter_dir}/")
+    _command(prometheus, fr"cp {node_exporter_dir}/node_exporter /usr/local/bin/node_exporter")
+
+    # create user
+    _command(prometheus, r"useradd --no-create-home --shell /bin/false node_exporter")
+    _command(prometheus, r"chown node_exporter:node_exporter /usr/local/bin/node_exporter")
+    _command(prometheus, fr"echo '{NODE_EXPORTER}' | sudo tee /etc/systemd/system/node_exporter.service")
+
+    # enable node_Exporter in systemctl
+    _command(prometheus, r"systemctl daemon-reload")
+    _command(prometheus, r"systemctl start node_exporter")
+    _command(prometheus, r"systemctl enable grafana-server.service")
+    _command(prometheus, fr"echo '{CONFIG}' | sudo tee -a /etc/prometheus/prometheus.yml")
 
     # Close the prometheus ssh session
     prometheus.close()
