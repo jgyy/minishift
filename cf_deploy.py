@@ -294,7 +294,6 @@ def _prometheus_shell(prometheus_ip, key):
     # prometheus shell scripts
     prometheus_version = "2.24.1"
     prometheus_dir = fr"/home/ec2-user/prometheus-{prometheus_version}.linux-amd64"
-    _command(prometheus, 'qwertyuiop')
     _command(
         prometheus,
         fr'wget https://github.com/prometheus/prometheus/releases/download/v{prometheus_version}/prometheus-{prometheus_version}.linux-amd64.tar.gz'
