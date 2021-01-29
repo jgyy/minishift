@@ -80,7 +80,7 @@ def _arguments():
     parse.add_argument(
         '-d', '--deploy-list', nargs='+',
         action='store', type=str,
-        dest='deploy', default=['minishift', 'gitlab', 'prometheus'],
+        dest='deploy', choices=['minishift', 'gitlab', 'prometheus'],
         help='list of tools to deploy'
     )
     parse.add_argument(
@@ -287,7 +287,7 @@ def _prometheus_shell(prometheus_ip, key):
     prometheus_dir = fr"/home/ec2-user/prometheus-{prometheus_version}.linux-amd64"
     _command(
         prometheus,
-        fr'wget https://github.com/prometheus/prometheus/releases/download/v{v}/prometheus-{v}.linux-amd64.tar.gz'
+        fr'wget https://github.com/prometheus/prometheus/releases/download/v{prometheus_version}/prometheus-{prometheus_version}.linux-amd64.tar.gz'
     )
     _command(prometheus, fr'tar -xzvf prometheus-{prometheus_version}.linux-amd64.tar.gz')
     _command(prometheus, fr'cd {prometheus_dir}/')
