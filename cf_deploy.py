@@ -347,6 +347,13 @@ def _prometheus_shell(prometheus_ip, key):
     _command(prometheus, r"systemctl enable grafana-server.service")
     _command(prometheus, fr"echo '{CONFIG}' | sudo tee -a /etc/prometheus/prometheus.yml")
 
+    # restart prometheus server
+    prometheus_service = _command(prometheus, r'ps aux | grep prometheus')[0].split()[1]
+    _command(prometheus, fr'kill -9 {prometheus_service}')
+    _command(prometheus, r'systemctl daemon-reload')
+    _command(prometheus, r'systemctl enable prometheus')
+    _command(prometheus, r'systemctl start prometheus')
+
     # Close the prometheus ssh session
     prometheus.close()
     print(fr'prometheus url: http://{prometheus_ip}:9090/')
