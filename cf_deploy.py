@@ -330,9 +330,9 @@ def _prometheus_shell(prometheus_ip, key):
     node_exporter_dir = fr"/home/ec2-user/node_exporter-{prometheus_version}.linux-amd64"
     _command(
         prometheus,
-        fr"wget https://github.com/prometheus/node_exporter/releases/download/v${node_exporter_version}/node_exporter-${node_exporter_version}.linux-amd64.tar.gz"
+        fr"wget https://github.com/prometheus/node_exporter/releases/download/v{node_exporter_version}/node_exporter-{node_exporter_version}.linux-amd64.tar.gz"
     )
-    _command(prometheus, fr"tar -xzvf node_exporter-${node_exporter_version}.linux-amd64.tar.gz")
+    _command(prometheus, fr"tar -xzvf node_exporter-{node_exporter_version}.linux-amd64.tar.gz")
     _command(prometheus, fr"cd {node_exporter_dir}/")
     _command(prometheus, fr"cp {node_exporter_dir}/node_exporter /usr/local/bin/node_exporter")
 
