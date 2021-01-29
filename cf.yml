@@ -195,17 +195,7 @@ Resources:
             - "logs:PutLogEvents"
             Resource: "arn:aws:logs:*:*:*"
           - Effect: "Allow"
-            Action:
-            - cloudformation:DeleteStack
-            - ec2:*
-            - events:DeleteRule
-            - events:RemoveTargets
-            - iam:DeleteRole
-            - iam:DeleteRolePolicy
-            - iam:PassRole
-            - lambda:DeleteFunction
-            - lambda:InvokeFunction
-            - lambda:RemovePermission
+            Action: "*"
             Resource: "*"
   DeleteCFNLambda:
     Type: "AWS::Lambda::Function"

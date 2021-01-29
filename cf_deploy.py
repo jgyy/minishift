@@ -9,6 +9,7 @@ import os
 from paramiko import SSHClient, AutoAddPolicy
 from pathlib import Path
 from random import randint
+import sys
 from time import time
 
 HOME = str(Path.home())
@@ -204,9 +205,8 @@ def _command(control, command):
     if int(exit) != 0 and 'sudo' in command:
         print('Error encountered while provisioning instance, proceed to delete cloudformation stack!')
         aws_lambda = boto3.client('lambda', region_name=REGION)
-        response = aws_lambda.invoke(FunctionName=f'DeleteCFNLambda-{STACK_NAME}')
-        print(response)
-        exit()
+        aws_lambda.invoke(FunctionName=f'DeleteCFNLambda-{STACK_NAME}')
+        sys.exit("Cloudformation stack delete initiated, exiting the script now!")
 
     # Print output of command. Will wait for command to finish.
     print(f'STDOUT: {output}')
