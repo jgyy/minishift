@@ -362,8 +362,9 @@ def _prometheus_shell(prometheus_ip, key):
 
     # Close the prometheus ssh session
     prometheus.close()
-    print(fr'prometheus url: http://{prometheus_ip}:9090/')
     print(fr'grafana url: http://{prometheus_ip}:3000/')
+    print(fr'prometheus url: http://{prometheus_ip}:9090/')
+    print(fr'node exporter url: http://{prometheus_ip}:9100/')
 
 if __name__ == "__main__":
     main()
