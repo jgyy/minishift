@@ -89,7 +89,14 @@ Resources:
       SecurityGroups:
       - Ref: InstancesSG
       KeyName: !Ref 'KeyName'
-      ImageId: 'ami-0cbc6aae997c6538a'
+      ImageId: ami-0cbc6aae997c6538a
+      BlockDeviceMappings:
+      - DeviceName: /dev/xvda
+        Ebs:
+          VolumeType: gp3
+          Iops: 110
+          DeleteOnTermination: true
+          VolumeSize: 11
       UserData:
         Fn::Base64:
           !Sub |
@@ -97,7 +104,7 @@ Resources:
             yum update -y
       Tags:
       - Key: Name
-        Value: Minishift
+        Value: Gitlab
   PrometheusNode:
     Type: AWS::EC2::Instance
     Description: Amazon Linux 2 AMI 2.0.20200304.0 x86_64 HVM gp2
@@ -107,7 +114,14 @@ Resources:
       SecurityGroups:
       - Ref: InstancesSG
       KeyName: !Ref 'KeyName'
-      ImageId: 'ami-0cbc6aae997c6538a'
+      ImageId: ami-0cbc6aae997c6538a
+      BlockDeviceMappings:
+      - DeviceName: /dev/xvda
+        Ebs:
+          VolumeType: gp3
+          Iops: 110
+          DeleteOnTermination: true
+          VolumeSize: 11
       UserData:
         Fn::Base64:
           !Sub |
@@ -115,7 +129,7 @@ Resources:
             yum update -y
       Tags:
       - Key: Name
-        Value: Minishift
+        Value: Prometheus
   MinishiftNode:
     Type: AWS::EC2::Instance
     Description: CentOS Linux 7 x86_64 HVM EBS ENA 2002_01
@@ -125,7 +139,14 @@ Resources:
       SecurityGroups:
       - Ref: InstancesSG
       KeyName: !Ref 'KeyName'
-      ImageId: 'ami-07f65177cb990d65b'
+      ImageId: ami-07f65177cb990d65b
+      BlockDeviceMappings:
+      - DeviceName: /dev/xvda
+        Ebs:
+          VolumeType: gp3
+          Iops: 110
+          DeleteOnTermination: true
+          VolumeSize: 11
       UserData:
         Fn::Base64:
           !Sub |
@@ -152,7 +173,14 @@ Resources:
       SecurityGroups:
       - Ref: ControlNodeSG
       KeyName: !Ref 'KeyName'
-      ImageId: 'ami-0cbc6aae997c6538a'
+      ImageId: ami-0cbc6aae997c6538a
+      BlockDeviceMappings:
+      - DeviceName: /dev/xvda
+        Ebs:
+          VolumeType: gp3
+          Iops: 110
+          DeleteOnTermination: true
+          VolumeSize: 11
       UserData:
         Fn::Base64:
           !Sub |
