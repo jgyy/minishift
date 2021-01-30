@@ -27,12 +27,20 @@ with open("grafana.txt") as file:
     GRAFANA = file.read()
 with open("node_Exporter.txt") as file:
     NODE_EXPORTER = file.read()
-CONFIG = """
-  - job_name: 'node_exporter'
+NODE_EXPORTER_CONFIG = """
+  - job_name: node_exporter
     scrape_interval: 5s
     static_configs:
-      - targets: ['localhost:9100']
-"""
+      - targets:
+        - localhost:9100
+"""[1:-1]
+ALERT_MANAGER_CONFIG = """
+alerting:
+  alertmanagers:
+  - static_configs:
+    - targets:
+      - localhost:9093
+"""[1:-1]
 
 def main():
     """Update or create cloudformation stack"""
@@ -128,10 +136,7 @@ def _cloudformation(args):
         },
     ]
     for arg in args['deploy']:
-        parameter_data.append({
-            'ParameterKey': arg.capitalize(),
-            'ParameterValue': "true"
-        })
+        parameter_data.append({'ParameterKey': arg.capitalize(), 'ParameterValue': "true"})
     params = {
         'StackName': STACK_NAME, 'TemplateBody': template_data,
         'Parameters': parameter_data, 'Capabilities': ['CAPABILITY_IAM']
@@ -288,10 +293,10 @@ def _gitlab_shell(gitlab_ip, key):
     gitlab.close()
 
 def _prometheus_shell(prometheus_ip, key):
-    # Prometheus Setup
+    # Prometheus Setup and versions
     prometheus = _connect(prometheus_ip, 'ec2-user', key)
 
-    # prometheus shell scripts
+    # prometheus bash commands part 1
     prometheus_version = "2.24.1"
     prometheus_dir = fr"/home/ec2-user/prometheus-{prometheus_version}.linux-amd64"
     _command(
@@ -300,7 +305,6 @@ def _prometheus_shell(prometheus_ip, key):
     )
     _command(prometheus, fr'tar -xzvf prometheus-{prometheus_version}.linux-amd64.tar.gz')
     _command(prometheus, fr'cd {prometheus_dir}/')
-
     # create user
     _command(prometheus, r'useradd --no-create-home --shell /bin/false prometheus')
     # create directories
@@ -320,22 +324,14 @@ def _prometheus_shell(prometheus_ip, key):
     _command(prometheus, fr'cp {prometheus_dir}/prometheus.yml /etc/prometheus/prometheus.yml')
     _command(prometheus, r'chown -R prometheus:prometheus /etc/prometheus/consoles')
     _command(prometheus, r'chown -R prometheus:prometheus /etc/prometheus/console_libraries')
-
     # setup systemd
     _command(prometheus, fr"echo '{PROMETHEUS}' | sudo tee /etc/systemd/system/prometheus.service")
     _command(prometheus, r'systemctl daemon-reload')
     _command(prometheus, r'systemctl enable prometheus')
     _command(prometheus, r'systemctl start prometheus')
 
-    # setup grafana
-    _command(prometheus, fr"echo '{GRAFANA}' | sudo tee /etc/yum.repos.d/grafana.repo")
-    _command(prometheus, r"yum install -y grafana")
-    _command(prometheus, r"systemctl daemon-reload")
-    _command(prometheus, r"systemctl start grafana-server")
-    _command(prometheus, r"systemctl enable grafana-server.service")
-
-    # setup node exporter
-    node_exporter_version = "1.0.1"
+    # setup node exporter part 2
+    node_exporter_version = '1.0.1'
     node_exporter_dir = fr"/home/ec2-user/node_exporter-{node_exporter_version}.linux-amd64"
     _command(
         prometheus,
@@ -344,23 +340,54 @@ def _prometheus_shell(prometheus_ip, key):
     _command(prometheus, fr"tar -xzvf node_exporter-{node_exporter_version}.linux-amd64.tar.gz")
     _command(prometheus, fr"cd {node_exporter_dir}/")
     _command(prometheus, fr"cp {node_exporter_dir}/node_exporter /usr/local/bin/node_exporter")
-
     # create user
     _command(prometheus, r"useradd --no-create-home --shell /bin/false node_exporter")
     _command(prometheus, r"chown node_exporter:node_exporter /usr/local/bin/node_exporter")
     _command(prometheus, fr"echo '{NODE_EXPORTER}' | sudo tee /etc/systemd/system/node_exporter.service")
-
     # enable node_Exporter in systemctl
     _command(prometheus, r"systemctl daemon-reload")
     _command(prometheus, r"systemctl start node_exporter")
     _command(prometheus, r"systemctl enable grafana-server.service")
-    _command(prometheus, fr"echo '{CONFIG}' | sudo tee -a /etc/prometheus/prometheus.yml")
-
+    _command(prometheus, fr"echo '{NODE_EXPORTER_CONFIG}' | sudo tee -a /etc/prometheus/prometheus.yml")
     # restart prometheus server
     prometheus_service = _command(prometheus, r'ps aux | grep prometheus')[0].split()[1]
     _command(prometheus, fr'kill -HUP {prometheus_service}')
 
-    # Close the prometheus ssh session
+    # setup grafana for redhat part 3
+    _command(prometheus, fr"echo '{GRAFANA}' | sudo tee /etc/yum.repos.d/grafana.repo")
+    _command(prometheus, r"yum install -y grafana")
+    _command(prometheus, r"systemctl daemon-reload")
+    _command(prometheus, r"systemctl start grafana-server")
+    _command(prometheus, r"systemctl enable grafana-server.service")
+
+    # setup alert manager for part 4
+    alert_manager_version = "0.21.0"
+    alert_manager_dir = fr"/home/ec2-user/alertmanager-{alert_manager_version}.linux-amd64"
+    _command(
+        prometheus,
+        fr"wget https://github.com/prometheus/alertmanager/releases/download/v{alert_manager_version}/alertmanager-{alert_manager_version}.linux-amd64.tar.gz"
+    )
+    _command(prometheus, fr"tar -xzvf alertmanager-{alert_manager_version}.linux-amd64.tar.gz")
+    _command(prometheus, fr"cd {alert_manager_dir}/")
+    # create user
+    _command(prometheus, r"useradd --no-create-home --shell /bin/false alertmanager")
+    # create directories
+    _command(prometheus, r"mkdir /etc/alertmanager")
+    _command(prometheus, r"mkdir /etc/alertmanager/template")
+    _command(prometheus, r"mkdir -p /var/lib/alertmanager/data")
+    # touch config file
+    _command(prometheus, r"touch /etc/alertmanager/alertmanager.yml")
+    # set ownership
+    _command(prometheus, r"chown -R alertmanager:alertmanager /etc/alertmanager")
+    _command(prometheus, r"chown -R alertmanager:alertmanager /var/lib/alertmanager")
+    # copy binaries
+    _command(prometheus, fr"cp {alert_manager_dir}/alertmanager /usr/local/bin/")
+    _command(prometheus, fr"cp {alert_manager_dir}/amtool /usr/local/bin/")
+    # set ownership
+    _command(prometheus, r"chown alertmanager:alertmanager /usr/local/bin/alertmanager")
+    _command(prometheus, r"chown alertmanager:alertmanager /usr/local/bin/amtool")
+
+    # Close the prometheus ssh session and print out the url
     prometheus.close()
     print(fr'grafana url: http://{prometheus_ip}:3000/')
     print(fr'prometheus url: http://{prometheus_ip}:9090/')

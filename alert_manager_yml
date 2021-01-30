@@ -1,0 +1,19 @@
+global:
+  smtp_smarthost: 'localhost:25'
+  smtp_from: 'alertmanager@prometheus.com'
+  smtp_auth_username: ''
+  smtp_auth_password: ''
+  smtp_require_tls: false
+templates:
+- '/etc/alertmanager/template/*.tmpl'
+route:
+  repeat_interval: 1h
+  receiver: operations-team
+receivers:
+- name: 'operations-team'
+  email_configs:
+  - to: 'operations-team+alerts@example.org'
+  slack_configs:
+  - api_url: https://hooks.slack.com/services/XXXXXX/XXXXXX/XXXXXX
+    channel: '#prometheus-course'
+    send_resolved: true
