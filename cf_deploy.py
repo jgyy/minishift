@@ -3,6 +3,7 @@ import argparse
 import boto3
 import botocore
 from datetime import datetime
+from dotenv import load_dotenv
 import json
 import logging
 import os
@@ -12,6 +13,7 @@ from random import randint
 import sys
 from time import time
 
+load_dotenv()
 HOME = str(Path.home())
 RANDOM = str(randint(0, 9999))
 REGION = 'ap-southeast-1'
@@ -21,12 +23,19 @@ This script helps to spin up an Openshift lab and gitlab eventually.
 The CloudFormation template will spin up two EC2 instances for setting up minishift.
 It also schedule automatic deletion of CloudFormation stacks.
 """.strip()
-with open("prometheus.txt") as file:
-    PROMETHEUS = file.read()
+with open("alert_manager_service.txt") as file:
+    ALERT_MANAGER_SERVICE = file.read()
+with open("alert_manager_yml.txt") as file:
+    ALERT_MANAGER_YML = file.read().format(
+        email=os.getenv('email'),
+        password=os.getenv('password')
+    )
 with open("grafana.txt") as file:
     GRAFANA = file.read()
-with open("node_Exporter.txt") as file:
+with open("node_exporter.txt") as file:
     NODE_EXPORTER = file.read()
+with open("prometheus.txt") as file:
+    PROMETHEUS = file.read()
 NODE_EXPORTER_CONFIG = """
   - job_name: node_exporter
     scrape_interval: 5s
@@ -386,12 +395,20 @@ def _prometheus_shell(prometheus_ip, key):
     # set ownership
     _command(prometheus, r"chown alertmanager:alertmanager /usr/local/bin/alertmanager")
     _command(prometheus, r"chown alertmanager:alertmanager /usr/local/bin/amtool")
+    # setup systemd
+    _command(prometheus, fr"echo '{ALERT_MANAGER_SERVICE}' | sudo tee /etc/systemd/system/alertmanager.service")
+    _command(prometheus, r'systemctl daemon-reload')
+    _command(prometheus, r'systemctl enable alertmanager')
+    _command(prometheus, r'systemctl start alertmanager')
+    # restart prometheus and update yml file
+    _command(prometheus, r'systemctl start prometheus')
+    _command(prometheus, fr"echo '{ALERT_MANAGER_YML}' | sudo tee /etc/alertmanager/alertmanager.yml")
+    _command(prometheus, fr"echo '{ALERT_MANAGER_CONFIG}' | sudo tee -a /etc/prometheus/prometheus.yml")
 
     # Close the prometheus ssh session and print out the url
     prometheus.close()
     print(fr'grafana url: http://{prometheus_ip}:3000/')
     print(fr'prometheus url: http://{prometheus_ip}:9090/')
-    print(fr'node exporter url: http://{prometheus_ip}:9100/')
 
 if __name__ == "__main__":
     main()
