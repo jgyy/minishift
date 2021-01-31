@@ -13,3 +13,7 @@ receivers:
 - name: 'operations-team'
   email_configs:
   - to: '{email}'
+  slack_configs:
+  - api_url: {slack}
+    channel: '#prometheus'
+    send_resolved: true

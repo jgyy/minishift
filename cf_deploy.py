@@ -28,7 +28,8 @@ with open("alert_manager_service.txt") as file:
 with open("alert_manager_yml.txt") as file:
     ALERT_MANAGER_YML = file.read().format(
         email=os.getenv('email'),
-        password=os.getenv('password')
+        password=os.getenv('password'),
+        slack=os.getenv('slack')
     )
 with open("grafana.txt") as file:
     GRAFANA = file.read()
@@ -42,13 +43,6 @@ NODE_EXPORTER_CONFIG = """
     static_configs:
       - targets:
         - localhost:9100
-"""[1:-1]
-ALERT_MANAGER_CONFIG = """
-alerting:
-  alertmanagers:
-  - static_configs:
-    - targets:
-      - localhost:9093
 """[1:-1]
 
 def main():
@@ -361,8 +355,8 @@ def _prometheus_shell(prometheus_ip, key):
     _command(prometheus, r"systemctl enable node_exporter")
     _command(prometheus, fr"echo '{NODE_EXPORTER_CONFIG}' | sudo tee -a /etc/prometheus/prometheus.yml")
     # restart prometheus server
-    prometheus_service = _command(prometheus, r'ps aux | grep prometheus')[0].split()[1]
-    _command(prometheus, fr'kill -HUP {prometheus_service}')
+    _command(prometheus, r"service prometheus restart")
+    _command(prometheus, r"service prometheus status")
 
     # setup grafana for redhat part 3
     _command(prometheus, fr"echo '{GRAFANA}' | sudo tee /etc/yum.repos.d/grafana.repo")
@@ -405,12 +399,21 @@ def _prometheus_shell(prometheus_ip, key):
     # restart prometheus and update yml file
     _command(prometheus, r'systemctl start prometheus')
     _command(prometheus, fr"echo '{ALERT_MANAGER_YML}' | sudo tee /etc/alertmanager/alertmanager.yml")
-    _command(prometheus, fr"echo '{ALERT_MANAGER_CONFIG}' | sudo tee -a /etc/prometheus/prometheus.yml")
+    _command(prometheus, r"service alertmanager restart")
+    _command(prometheus, r"service alertmanager status")
+    prometheus_yml = _command(prometheus, r"cat /etc/prometheus/prometheus.yml")[0]
+    prometheus_yml = prometheus_yml.replace(r'# - alertmanager:9093', r'- localhost:9093')
+    prometheus_yml = prometheus_yml.replace('\'', '"')
+    _command(prometheus, fr"echo '{prometheus_yml}' | sudo tee /etc/prometheus/prometheus.yml")
+    _command(prometheus, r"service prometheus restart")
+    _command(prometheus, r'service prometheus status')
 
     # Close the prometheus ssh session and print out the url
     prometheus.close()
     print(fr'grafana url: http://{prometheus_ip}:3000/')
     print(fr'prometheus url: http://{prometheus_ip}:9090/')
+    print(fr'node exporter url: http://{prometheus_ip}:9100/')
+    print(fr'alert manager url: http://{prometheus_ip}:9093/')
 
 if __name__ == "__main__":
     main()
