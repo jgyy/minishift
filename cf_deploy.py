@@ -216,11 +216,6 @@ def _command(control, command):
     stderr.close()
     if int(exit) != 0 and 'sudo' not in command:
         return _command(control, fr"sudo {command}")
-    if int(exit) != 0 and 'sudo' in command:
-        print('Error encountered while provisioning instance, proceed to delete cloudformation stack!')
-        aws_lambda = boto3.client('lambda', region_name=REGION)
-        aws_lambda.invoke(FunctionName=f'DeleteCFNLambda-{STACK_NAME}')
-        sys.exit("Cloudformation stack delete initiated, exiting the script now!")
 
     # Print output of command. Will wait for command to finish.
     print(f'STDOUT: {output}')
@@ -229,6 +224,13 @@ def _command(control, command):
     print(f'Return code: {exit}')
     time_spent = time() - before
     print(f"Time spent between commands: {time_spent:.2f} seconds\n\n")
+
+    # Automate deletion of script if error encounted.
+    if int(exit) != 0 and 'sudo' in command:
+        print('Error encountered while provisioning instance, proceed to delete cloudformation stack!')
+        aws_lambda = boto3.client('lambda', region_name=REGION)
+        aws_lambda.invoke(FunctionName=f'DeleteCFNLambda-{STACK_NAME}')
+        sys.exit("Cloudformation stack delete initiated, exiting the script now!")
 
     return [output, error, exit]
 
@@ -356,7 +358,7 @@ def _prometheus_shell(prometheus_ip, key):
     # enable node_Exporter in systemctl
     _command(prometheus, r"systemctl daemon-reload")
     _command(prometheus, r"systemctl start node_exporter")
-    _command(prometheus, r"systemctl enable grafana-server.service")
+    _command(prometheus, r"systemctl enable node_exporter")
     _command(prometheus, fr"echo '{NODE_EXPORTER_CONFIG}' | sudo tee -a /etc/prometheus/prometheus.yml")
     # restart prometheus server
     prometheus_service = _command(prometheus, r'ps aux | grep prometheus')[0].split()[1]
