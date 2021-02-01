@@ -1,19 +1,19 @@
 global:
-  smtp_smarthost: 'localhost:25'
-  smtp_from: '{email}'
-  smtp_auth_username: '{email}'
-  smtp_auth_password: '{password}'
+  smtp_smarthost: "localhost:25"
+  smtp_from: "{email}"
+  smtp_auth_username: "{email}"
+  smtp_auth_password: "{password}"
   smtp_require_tls: false
 templates:
-- '/etc/alertmanager/template/*.tmpl'
+- "/etc/alertmanager/template/*.tmpl"
 route:
   repeat_interval: 1h
   receiver: operations-team
 receivers:
-- name: 'operations-team'
+- name: "operations-team"
   email_configs:
-  - to: '{email}'
+  - to: "{email}"
   slack_configs:
   - api_url: {slack}
-    channel: '#prometheus'
+    channel: "#prometheus"
     send_resolved: true

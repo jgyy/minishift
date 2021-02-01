@@ -35,6 +35,8 @@ with open("grafana.txt") as file:
     GRAFANA = file.read()
 with open("node_exporter.txt") as file:
     NODE_EXPORTER = file.read()
+with open("postfix.txt") as file:
+    POSTFIX = file.read()
 with open("prometheus.txt") as file:
     PROMETHEUS = file.read()
 NODE_EXPORTER_CONFIG = """
@@ -236,15 +238,9 @@ def _minishift_shell(control_node_ip, minishift_ip, key):
     # Minishift Setup
     _command(control_cli, fr'ssh-keygen -b 2048 -t rsa -f /home/ec2-user/.ssh/id_rsa_{RANDOM} -q -N ""')
     id_rsa = _command(control_cli, fr'cat /home/ec2-user/.ssh/id_rsa_{RANDOM}.pub')[0]
-    _command(
-        minishift,
-        r"echo -e 'PubkeyAuthentication yes \nPermitRootLogin yes' | sudo tee -a /etc/ssh/sshd_config"
-    )
+    _command(minishift, r"echo -e 'PubkeyAuthentication yes \nPermitRootLogin yes' | sudo tee -a /etc/ssh/sshd_config")
     _command(minishift, r'sudo systemctl restart sshd')
-    _command(
-        minishift,
-        fr"echo -e '{id_rsa}' | sudo tee -a /root/.ssh/authorized_keys"
-    )
+    _command(minishift, fr"echo -e '{id_rsa}' | sudo tee -a /root/.ssh/authorized_keys")
     minishift.close()
 
     # Control Node Setup
@@ -275,10 +271,7 @@ def _gitlab_shell(gitlab_ip, key):
     gitlab = _connect(gitlab_ip, 'ec2-user', key)
 
     # Gitlab shell scripts
-    _command(
-        gitlab,
-        r'sudo yum install -y curl policycoreutils-python openssh-server perl firewalld postfix'
-    )
+    _command(gitlab, r'yum install -y curl policycoreutils-python openssh-server perl firewalld postfix')
     _command(gitlab, r'systemctl enable sshd')
     _command(gitlab, r'systemctl start sshd')
     _command(gitlab, r'systemctl enable firewalld')
@@ -288,10 +281,7 @@ def _gitlab_shell(gitlab_ip, key):
     _command(gitlab, r'systemctl reload firewalld')
     _command(gitlab, r'systemctl enable postfix')
     _command(gitlab, r'systemctl start postfix')
-    _command(
-        gitlab,
-        r'curl https://packages.gitlab.com/install/repositories/gitlab/gitlab-ee/script.rpm.sh | sudo bash'
-    )
+    _command(gitlab, r'curl https://packages.gitlab.com/install/repositories/gitlab/gitlab-ee/script.rpm.sh | sudo bash')
     _command(gitlab, fr'EXTERNAL_URL="https://{gitlab_ip}" yum install -y gitlab-ee')
 
     # Close the gitlab ssh session
@@ -403,10 +393,17 @@ def _prometheus_shell(prometheus_ip, key):
     _command(prometheus, r"service alertmanager status")
     prometheus_yml = _command(prometheus, r"cat /etc/prometheus/prometheus.yml")[0]
     prometheus_yml = prometheus_yml.replace(r'# - alertmanager:9093', r'- localhost:9093')
-    prometheus_yml = prometheus_yml.replace('\'', '"')
     _command(prometheus, fr"echo '{prometheus_yml}' | sudo tee /etc/prometheus/prometheus.yml")
     _command(prometheus, r"service prometheus restart")
     _command(prometheus, r'service prometheus status')
+
+    # setup mail server for part 5
+    _command(prometheus, r'yum install -y postfix mailutils')
+    # set config to send-only and from localhost
+    postfix_command = r"echo '" + POSTFIX + r"' | sudo tee /etc/postfix/main.cf"
+    _command(prometheus, postfix_command)
+    # restart postfix
+    _command(prometheus, r"service postfix restart")
 
     # Close the prometheus ssh session and print out the url
     prometheus.close()
