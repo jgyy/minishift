@@ -388,7 +388,8 @@ def _prometheus_shell(prometheus_ip, key):
     _command(prometheus, r'systemctl start alertmanager')
     # restart prometheus and update yml file
     _command(prometheus, r'systemctl start prometheus')
-    _command(prometheus, fr"echo '{ALERT_MANAGER_YML}' | sudo tee /etc/alertmanager/alertmanager.yml")
+    # be careful not to use raw here
+    _command(prometheus, f'echo \'{ALERT_MANAGER_YML}\' | sudo tee /etc/alertmanager/alertmanager.yml')
     _command(prometheus, r"service alertmanager restart")
     _command(prometheus, r"service alertmanager status")
     prometheus_yml = _command(prometheus, r"cat /etc/prometheus/prometheus.yml")[0]
