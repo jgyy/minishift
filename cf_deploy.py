@@ -40,11 +40,11 @@ with open("postfix.txt") as file:
 with open("prometheus.txt") as file:
     PROMETHEUS = file.read()
 NODE_EXPORTER_CONFIG = """
-  - job_name: node_exporter
-    scrape_interval: 5s
+  - job_name: "node_exporter"
+    scrape_interval: "5s"
     static_configs:
       - targets:
-        - localhost:9100
+        - "localhost:9100"
 """[1:-1]
 
 def main():
@@ -316,7 +316,9 @@ def _prometheus_shell(prometheus_ip, key):
     # copy config
     _command(prometheus, fr'cp -r {prometheus_dir}/consoles /etc/prometheus/consoles')
     _command(prometheus, fr'cp -r {prometheus_dir}/console_libraries /etc/prometheus/console_libraries')
-    _command(prometheus, fr'cp {prometheus_dir}/prometheus.yml /etc/prometheus/prometheus.yml')
+    # edit prometheus yml to be all double quotes in order to avoid syntax error later
+    prometheus_yml = _command(prometheus, fr'cat {prometheus_dir}/prometheus.yml')[0].replace('\'', '"')
+    _command(prometheus, fr"echo '{prometheus_yml}' | sudo tee /etc/prometheus/prometheus.yml")
     _command(prometheus, r'chown -R prometheus:prometheus /etc/prometheus/consoles')
     _command(prometheus, r'chown -R prometheus:prometheus /etc/prometheus/console_libraries')
     # setup systemd
@@ -388,8 +390,7 @@ def _prometheus_shell(prometheus_ip, key):
     _command(prometheus, r'systemctl start alertmanager')
     # restart prometheus and update yml file
     _command(prometheus, r'systemctl start prometheus')
-    # be careful not to use raw here
-    _command(prometheus, f'echo \'{ALERT_MANAGER_YML}\' | sudo tee /etc/alertmanager/alertmanager.yml')
+    _command(prometheus, fr'echo "{ALERT_MANAGER_YML}" | sudo tee /etc/alertmanager/alertmanager.yml')
     _command(prometheus, r"service alertmanager restart")
     _command(prometheus, r"service alertmanager status")
     prometheus_yml = _command(prometheus, r"cat /etc/prometheus/prometheus.yml")[0]
