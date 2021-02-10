@@ -403,6 +403,7 @@ def _prometheus_shell(prometheus_ip, key):
     _command(prometheus, r'service prometheus status')
 
     # no mail server, use gmail. Now to introduce stress
+    _command(prometheus, r'amazon-linux-extras install epel')
     _command(prometheus, r'yum install stress -y')
     _command(prometheus, r'stress --cpu 1 --io 1 --vm 1 --vm-bytes 128M --timeout 9999s')
 
