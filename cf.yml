@@ -109,7 +109,7 @@ Resources:
     Description: Amazon Linux 2 AMI 2.0.20200304.0 x86_64 HVM gp2
     Condition: PrometheusResources
     Properties:
-      InstanceType: 't3.medium'
+      InstanceType: 't3.large'
       SecurityGroups:
       - Ref: InstancesSG
       KeyName: !Ref 'KeyName'

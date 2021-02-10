@@ -405,14 +405,16 @@ def _prometheus_shell(prometheus_ip, key):
     # no mail server, use gmail. Now to introduce stress
     _command(prometheus, r'amazon-linux-extras install epel')
     _command(prometheus, r'yum install stress -y')
-    _command(prometheus, r'stress --cpu 1 --io 1 --vm 1 --vm-bytes 128M --timeout 9999s')
 
-    # Close the prometheus ssh session and print out the url
-    prometheus.close()
     print(fr'grafana url: http://{prometheus_ip}:3000/')
     print(fr'prometheus url: http://{prometheus_ip}:9090/')
     print(fr'node exporter url: http://{prometheus_ip}:9100/')
     print(fr'alert manager url: http://{prometheus_ip}:9093/')
+
+    _command(prometheus, r'stress --cpu 1 --timeout 9999s')
+
+    # Close the prometheus ssh session and print out the url
+    prometheus.close()
 
 if __name__ == "__main__":
     main()
