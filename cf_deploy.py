@@ -395,7 +395,13 @@ def _prometheus_shell(prometheus_ip, key):
     _command(prometheus, r"service alertmanager status")
     prometheus_yml = _command(prometheus, r"cat /etc/prometheus/prometheus.yml")[0]
     prometheus_yml = prometheus_yml.replace(r'# - alertmanager:9093', r'- localhost:9093')
+    _command(prometheus, fr"echo '{prometheus_yml}' | sudo tee /etc/prometheus/prometheus.yml")
+    _command(prometheus, r'service prometheus restart')
+    _command(prometheus, r'service prometheus status')
+
+    prometheus_yml = _command(prometheus, r"cat /etc/prometheus/prometheus.yml")[0]
     prometheus_yml = prometheus_yml.replace(r'# - "first_rules.yml"', r'- "/etc/prometheus/alert.rules"')
+    prometheus_yml = prometheus_yml.replace(r'  # - "second_rules.yml"', "")
     _command(prometheus, fr"echo '{prometheus_yml}' | sudo tee /etc/prometheus/prometheus.yml")
     _command(prometheus, r'echo "' + ALERT_RULES + r'" | sudo tee /etc/prometheus/alert.rules')
     _command(prometheus, r'service prometheus restart')
