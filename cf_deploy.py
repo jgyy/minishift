@@ -31,12 +31,12 @@ with open("alert_manager_yml.txt") as file:
         password=os.getenv('password'),
         slack=os.getenv('slack')
     )
+with open("alert_rules.txt") as file:
+    ALERT_RULES = file.read()
 with open("grafana.txt") as file:
     GRAFANA = file.read()
 with open("node_exporter.txt") as file:
     NODE_EXPORTER = file.read()
-with open("postfix.txt") as file:
-    POSTFIX = file.read()
 with open("prometheus.txt") as file:
     PROMETHEUS = file.read()
 NODE_EXPORTER_CONFIG = """
@@ -390,22 +390,20 @@ def _prometheus_shell(prometheus_ip, key):
     _command(prometheus, r'systemctl start alertmanager')
     # restart prometheus and update yml file
     _command(prometheus, r'systemctl start prometheus')
-    _command(prometheus, fr'echo "{ALERT_MANAGER_YML}" | sudo tee /etc/alertmanager/alertmanager.yml')
+    _command(prometheus, r'echo "' + ALERT_MANAGER_YML + r'" | sudo tee /etc/alertmanager/alertmanager.yml')
     _command(prometheus, r"service alertmanager restart")
     _command(prometheus, r"service alertmanager status")
     prometheus_yml = _command(prometheus, r"cat /etc/prometheus/prometheus.yml")[0]
     prometheus_yml = prometheus_yml.replace(r'# - alertmanager:9093', r'- localhost:9093')
+    prometheus_yml = prometheus_yml.replace(r'# - "first_rules.yml"', r'- "/etc/prometheus/alert.rules"')
     _command(prometheus, fr"echo '{prometheus_yml}' | sudo tee /etc/prometheus/prometheus.yml")
-    _command(prometheus, r"service prometheus restart")
+    _command(prometheus, r'echo "' + ALERT_RULES + r'" | sudo tee /etc/prometheus/alert.rules')
+    _command(prometheus, r'service prometheus restart')
     _command(prometheus, r'service prometheus status')
 
-    # setup mail server for part 5
-    _command(prometheus, r'yum install -y postfix mailutils')
-    # set config to send-only and from localhost
-    postfix_command = r"echo '" + POSTFIX + r"' | sudo tee /etc/postfix/main.cf"
-    _command(prometheus, postfix_command)
-    # restart postfix
-    _command(prometheus, r"service postfix restart")
+    # no mail server, use gmail. Now to introduce stress
+    _command(prometheus, r'yum install stress -y')
+    _command(prometheus, r'stress --cpu 1 --io 1 --vm 1 --vm-bytes 128M --timeout 9999s')
 
     # Close the prometheus ssh session and print out the url
     prometheus.close()

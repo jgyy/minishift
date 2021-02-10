@@ -1,19 +1,21 @@
 global:
-  smtp_smarthost: "localhost:25"
-  smtp_from: "{email}"
-  smtp_auth_username: "{email}"
-  smtp_auth_password: "{password}"
-  smtp_require_tls: false
+  resolve_timeout: 1m
 templates:
 - "/etc/alertmanager/template/*.tmpl"
 route:
   repeat_interval: 1h
-  receiver: operations-team
+  receiver: "gmail-notifications"
 receivers:
-- name: "operations-team"
+- name: "gmail-notifications"
   email_configs:
   - to: "{email}"
+    from: "{email}"
+    smarthost: smtp.gmail.com:587
+    auth_username: "{email}"
+    auth_identity: "{email}"
+    auth_password: "{password}"
+    send_resolved: true
   slack_configs:
-  - api_url: {slack}
+  - api_url: "{slack}"
     channel: "#prometheus"
     send_resolved: true
